@@ -1,0 +1,42 @@
+# 配置文件
+
+# API服务器配置
+API_HOST = "fcs.botzooo.com"
+API_PORT = 30080
+WS_PORT = 30081
+
+# 认证信息
+USERNAME = "fcs002"
+PASSWORD = "fcs002fcs002"
+
+# API端点
+TOKEN_ENDPOINT = f"http://{API_HOST}:{API_PORT}/api/auth/token"
+CAPTURE_ENDPOINT = f"http://{API_HOST}:{API_PORT}/api/gimbal/capture"
+WS_ENDPOINT = f"ws://{API_HOST}:{WS_PORT}"
+
+# 图像保存路径
+CAPTURE_DIR = "capture"
+
+# WebSocket控制通道定义
+# 车辆通道
+VEHICLE_CHANNEL_DIRECTION = 1    # 左转/右转
+VEHICLE_CHANNEL_THROTTLE = 2    # 前进/后退
+# 无人机通道
+AIRCRAFT_CHANNEL_DIRECTION = 1    # 左转/右转
+AIRCRAFT_CHANNEL_ALTITUDE = 2    # 下降/上升
+AIRCRAFT_CHANNEL_MOVEMENT = 3    # 左移/右移
+AIRCRAFT_CHANNEL_THROTTLE = 4   # 后退/前进
+AIRCRAFT_CHANNEL_GIMBAL_PITCH = 5     # 云台俯仰 1000下 2000上
+AIRCRAFT_CHANNEL_GIMBAL_ROLL = 6     # 云台横滚 1000右 2000左
+AIRCRAFT_CHANNEL_TAKEOFF = 7    # 起飞
+AIRCRAFT_CHANNEL_LAND = 8        # 降落
+AIRCRAFT_CHANNEL_BACK = 9        # 返航
+AIRCRAFT_CHANNEL_GIMBAL_RESET = 10    # 云台复位
+
+# 控制值范围
+CONTROL_MAX = 2000
+CONTROL_MIN = 1000
+CONTROL_MID = 1500
+
+# 最小控制间隔（秒）
+MIN_CONTROL_INTERVAL = 0.1
