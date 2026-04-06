@@ -208,9 +208,9 @@ if __name__ == "__main__":
     import sys
     
     # 默认参数
-    default_input = r"d:\pythonCodes\air-ground\backend\grid-1775449079133.png"
-    default_cols = 150
-    default_rows = 60
+    default_input = r"d:\pythonCodes\air-ground\backend\grid-1775449079133_upscaled_3.0x.png"
+    default_cols = 480
+    default_rows = 1200
     
     input_path = sys.argv[1] if len(sys.argv) > 1 else default_input
     cols = int(sys.argv[2]) if len(sys.argv) > 2 else default_cols

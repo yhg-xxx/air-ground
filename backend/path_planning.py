@@ -250,7 +250,7 @@ if __name__ == "__main__":
     
     # 默认参数
     grid_path = "output/grid_data.npz"
-    image_path = r"d:\pythonCodes\air-ground\backend\grid-1775449079133.png"
+    image_path = r"d:\pythonCodes\air-ground\backend\grid-1775449079133_upscaled_3.0x.png"
     
     if len(sys.argv) > 1:
         image_path = sys.argv[1]
