@@ -3,3 +3,7 @@ uvicorn
 python-multipart
 requests
 websockets
+opencv-python
+numpy
+matplotlib
+loguru
