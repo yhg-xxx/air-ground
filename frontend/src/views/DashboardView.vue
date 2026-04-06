@@ -112,6 +112,16 @@
             >
               健康检查
             </el-button>
+            
+            <el-button 
+              type="warning" 
+              size="large" 
+              @click="goToControlCenter"
+              icon="Operation"
+              class="feature-btn"
+            >
+              控制中心
+            </el-button>
           </div>
         </el-card>
       </el-col>
@@ -180,7 +190,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Monitor, Key, Camera, Check, Refresh } from '@element-plus/icons-vue'
+import { Monitor, Key, Camera, Check } from '@element-plus/icons-vue'
 import { systemAPI } from '@/services/api'
 
 const router = useRouter()
@@ -212,6 +222,15 @@ const goToGimbal = () => {
     return
   }
   router.push('/gimbal')
+}
+
+const goToControlCenter = () => {
+  if (!hasToken.value) {
+    ElMessage.warning('请先获取Token')
+    router.push('/auth')
+    return
+  }
+  router.push('/control-center')
 }
 
 const checkHealth = async () => {

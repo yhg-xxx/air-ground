@@ -105,4 +105,24 @@ export const controlAPI = {
   }
 }
 
+// 降落相关API
+export const landingAPI = {
+  // 开始降落过程
+  startLanding: (targetArucoId = 0) => {
+    return api.post('/api/landing/start', {}, {
+      params: { target_aruco_id: targetArucoId }
+    })
+  },
+  
+  // 获取降落状态
+  getLandingStatus: () => {
+    return api.get('/api/landing/status')
+  },
+  
+  // 取消降落过程
+  cancelLanding: () => {
+    return api.post('/api/landing/cancel')
+  }
+}
+
 export default api

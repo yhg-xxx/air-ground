@@ -18,17 +18,9 @@
             <el-icon><House /></el-icon>
             <span>控制台</span>
           </el-menu-item>
-          <el-menu-item index="/control">
-            <el-icon><Operation /></el-icon>
-            <span>设备控制</span>
-          </el-menu-item>
-          <el-menu-item index="/official-control">
-            <el-icon><VideoPlay /></el-icon>
-            <span>官方控制</span>
-          </el-menu-item>
-          <el-menu-item index="/gimbal">
-            <el-icon><Camera /></el-icon>
-            <span>云台控制</span>
+          <el-menu-item index="/control-center">
+            <el-icon><Monitor /></el-icon>
+            <span>控制中心</span>
           </el-menu-item>
         </el-menu>
       </el-aside>
@@ -73,7 +65,7 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { House, Camera, User, ArrowDown, Operation, VideoPlay } from '@element-plus/icons-vue'
+import { House, Camera, User, ArrowDown, Operation, VideoPlay, Monitor } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()

@@ -1,9 +1,7 @@
 import {createRouter, createWebHashHistory} from "vue-router";
 import AuthView from "./views/AuthView.vue";
 import DashboardView from "./views/DashboardView.vue";
-import GimbalView from "./views/GimbalView.vue";
-import ControlView from "./views/ControlView.vue";
-import OfficialControlView from "./views/OfficialControlView.vue";
+import ControlCenter from "./views/ControlCenter.vue";
 
 const router = createRouter({
         history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -30,30 +28,12 @@ const router = createRouter({
                 }
             },
             {
-                path: '/gimbal',
-                name: 'Gimbal',
-                component: GimbalView,
+                path: '/control-center',
+                name: 'ControlCenter',
+                component: ControlCenter,
                 meta: {
                     requiresAuth: true,
-                    title: '云台控制'
-                }
-            },
-            {
-                path: '/control',
-                name: 'Control',
-                component: ControlView,
-                meta: {
-                    requiresAuth: true,
-                    title: '设备控制'
-                }
-            },
-            {
-                path: '/official-control',
-                name: 'OfficialControl',
-                component: OfficialControlView,
-                meta: {
-                    requiresAuth: true,
-                    title: '官方控制'
+                    title: '控制中心'
                 }
             }
         ]
