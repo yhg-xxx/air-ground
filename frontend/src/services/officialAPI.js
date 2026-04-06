@@ -1,0 +1,244 @@
+import axios from 'axios'
+
+// ===================== 官方配置 =====================
+const HOST = ""
+const PORT = ""
+const WS_HOST = "fcs.botzooo.com"
+const WS_PORT = 30081
+const USERNAME = "fcs002"
+const PASSWORD = "fcs002fcs002"
+
+const MAX = 2000
+const MIN = 1000
+const MID = 1500
+const MIN_INTERVAL = 0.1
+
+// axios 代理配置
+const officialAPI = axios.create({
+  baseURL: '/api',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+
+// 官方服务器API
+export const officialServerAPI = {
+  // 获取Token
+  getToken: async () => {
+    try {
+      const response = await officialAPI.post('/auth/token', {
+        username: USERNAME,
+        password: PASSWORD
+      })
+      if (response.data.code === "1") {
+        return response.data.data.token
+      } else {
+        throw new Error("获取Token失败：" + response.data.msg)
+      }
+    } catch (error) {
+      throw new Error("获取Token失败：" + error.message)
+    }
+  },
+
+  // 抓拍图像
+  captureImage: async (token) => {
+    try {
+      const response = await officialAPI.post('/gimbal/capture', {}, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        responseType: 'blob',
+        timeout: 60000
+      })
+
+      if (response.headers["content-type"]?.includes("image")) {
+        const blob = new Blob([response.data], { type: 'image/jpeg' })
+        return URL.createObjectURL(blob)
+      } else {
+        throw new Error("抓拍失败：返回的不是图像数据")
+      }
+    } catch (error) {
+      throw new Error("抓拍失败：" + error.message)
+    }
+  }
+}
+
+// WebSocket连接管理（完全按照官方文档实现）
+export class WebSocketManager {
+  constructor() {
+    this.ws = null
+    this.isConnected = false
+    this.token = null
+    this.reconnectTimer = null
+    this.messageHandlers = new Map()
+
+    this.telemetryData = {
+      aircraft: { power: 0, voltage: 0, gps: '', speed: 0 },
+      vehicle: { power: 0, voltage: 0, gps: '', speed: 0 }
+    }
+  }
+
+  async connect(token) {
+    try {
+      this.token = token
+      const wsUrl = `ws://${WS_HOST}:${WS_PORT}?token=${token}`
+      this.ws = new WebSocket(wsUrl)
+
+      this.ws.onopen = () => {
+        console.log('WebSocket连接成功')
+        this.isConnected = true
+        this.emit('connected')
+      }
+
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          this.handleMessage(data)
+        } catch (error) {
+          console.error('解析WebSocket消息失败:', error)
+        }
+      }
+
+      this.ws.onclose = () => {
+        console.log('WebSocket连接关闭')
+        this.isConnected = false
+        this.emit('disconnected')
+        this.autoReconnect()
+      }
+
+      this.ws.onerror = (error) => {
+        console.error('WebSocket错误:', error)
+        this.emit('error', error)
+      }
+
+    } catch (error) {
+      throw new Error('WebSocket连接失败: ' + error.message)
+    }
+  }
+
+  handleMessage(data) {
+    const type = data.type
+
+    switch (type) {
+      case "auth_success":
+        console.log('✅ WebSocket认证成功')
+        this.emit('auth_success')
+        break
+      case "ping":
+        // 官方文档：服务端心跳，客户端无需回复！
+        console.log('❤️ 收到服务端心跳')
+        break
+      case "aircraft_telemetry_power":
+        this.telemetryData.aircraft.power = data.data.power
+        this.telemetryData.aircraft.voltage = data.data.voltage
+        this.emit('aircraft_telemetry', this.telemetryData.aircraft)
+        break
+      case "aircraft_telemetry_gnss":
+        this.telemetryData.aircraft.gps = data.data.gps
+        this.telemetryData.aircraft.speed = data.data.speed
+        this.emit('aircraft_telemetry', this.telemetryData.aircraft)
+        break
+      case "vehicle_telemetry_power":
+        this.telemetryData.vehicle.power = data.data.power
+        this.telemetryData.vehicle.voltage = data.data.voltage
+        this.emit('vehicle_telemetry', this.telemetryData.vehicle)
+        break
+      case "vehicle_telemetry_gnss":
+        this.telemetryData.vehicle.gps = data.data.gps
+        this.telemetryData.vehicle.speed = data.data.speed
+        this.emit('vehicle_telemetry', this.telemetryData.vehicle)
+        break
+      case "vehicle_safety_fence_over":
+        console.warn("⚠️ 车辆超出围栏")
+        break
+      case "aircraft_safety_fence_over":
+        console.warn("⚠️ 无人机超出围栏")
+        break
+      default:
+        this.emit('message', data)
+    }
+  }
+
+  // 发送控制指令（官方标准格式）
+  sendControl(target, channel, value) {
+    if (!this.isConnected || !this.ws) return
+
+    const message = {
+      type: "control",
+      target: target,
+      channel: channel,
+      value: value
+    }
+
+    this.ws.send(JSON.stringify(message))
+    console.log(`[${target}] 通道${channel} → ${value}`)
+  }
+
+  // 事件系统
+  on(event, callback) {
+    if (!this.messageHandlers.has(event)) this.messageHandlers.set(event, [])
+    this.messageHandlers.get(event).push(callback)
+  }
+
+  off(event, callback) {
+    if (this.messageHandlers.has(event)) {
+      const handlers = this.messageHandlers.get(event)
+      const index = handlers.indexOf(callback)
+      if (index > -1) handlers.splice(index, 1)
+    }
+  }
+
+  emit(event, data) {
+    if (this.messageHandlers.has(event)) {
+      this.messageHandlers.get(event).forEach(callback => {
+        try { callback(data) } catch (e) {}
+      })
+    }
+  }
+
+  // 自动重连
+  autoReconnect() {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = setTimeout(() => {
+      if (this.token) this.connect(this.token)
+    }, 2000)
+  }
+
+  // 断开连接
+  disconnect() {
+    if (this.ws) this.ws.close()
+    this.isConnected = false
+  }
+
+  getTelemetryData() {
+    return this.telemetryData
+  }
+}
+
+// 官方通道定义（100% 匹配文档）
+export const CONTROL_CHANNELS = {
+  // 车辆通道
+  VEHICLE_DIRECTION: 1,    // 前进后退
+  VEHICLE_THROTTLE: 2,     // 转向
+
+  // 无人机通道
+  AIRCRAFT_DIRECTION: 1,     // 左转右转
+  AIRCRAFT_ALTITUDE: 2,      // 上升下降
+  AIRCRAFT_MOVEMENT: 3,      // 左移右移
+  AIRCRAFT_THROTTLE: 4,      // 前进后退
+  AIRCRAFT_GIMBAL_PITCH: 5,  // 云台俯仰
+  AIRCRAFT_GIMBAL_ROLL: 6,   // 云台横滚
+  AIRCRAFT_TAKEOFF: 7,       // 起飞
+  AIRCRAFT_LAND: 8,          // 降落
+  AIRCRAFT_BACK: 9,          // 返航
+  AIRCRAFT_GIMBAL_RESET: 10  // 云台复位
+}
+
+export const CONTROL_VALUES = {
+  MAX: 2000,
+  MIN: 1000,
+  MID: 1500
+}
+
+export default officialServerAPI

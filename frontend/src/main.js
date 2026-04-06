@@ -4,7 +4,8 @@ import 'element-plus/dist/index.css'
 import App from './App.vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
-import axios from "axios";
+import axios from "axios"
+import router from './router'  // ✅ 添加这行：导入路由配置
 
 // 修复 Edge 浏览器无法最小化问题
 (function fixEdgeMinimizeIssue() {
@@ -40,7 +41,10 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
     app.component(key, component)
 }
 
+// 挂载插件
 app.use(ElementPlus, {
     locale: zhCn
 })
+app.use(router)  // ✅ 添加这行：挂载路由插件
+
 app.mount('#app')
