@@ -1,0 +1,21 @@
+{
+  "name": "air-ground",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yhg-xxx/air-ground.git"
+  },
+  "private": true,
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "axios": "^1.14.0",
+    "element-plus": "^2.13.6",
+    "vue": "^3.5.32",
+    "vue-router": "^5.0.4"
+  }
+}
