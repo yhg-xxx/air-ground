@@ -1,7 +1,6 @@
 import {createRouter, createWebHashHistory} from "vue-router";
 import AuthView from "./views/AuthView.vue";
-import DashboardView from "./views/DashboardView.vue";
-import ControlCenter from "./views/ControlCenter.vue";
+import MainControl from "./views/MainControl.vue";
 
 const router = createRouter({
         history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -19,21 +18,12 @@ const router = createRouter({
                 }
             },
             {
-                path: '/dashboard',
-                name: 'Dashboard',
-                component: DashboardView,
+                path: '/control',
+                name: 'MainControl',
+                component: MainControl,
                 meta: {
                     requiresAuth: true,
-                    title: '控制台'
-                }
-            },
-            {
-                path: '/control-center',
-                name: 'ControlCenter',
-                component: ControlCenter,
-                meta: {
-                    requiresAuth: true,
-                    title: '控制中心'
+                    title: '空地协同控制中心'
                 }
             }
         ]
@@ -42,12 +32,12 @@ const router = createRouter({
 )
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
-    const token = localStorage.getItem('token');
+router.beforeEach((to, from) => {
+    const token = localStorage.getItem('official_token');
     if (to.meta.requiresAuth && !token) {
-        next('/auth');
+        return '/auth';
     } else {
-        next();
+        return true;
     }
 });
 
