@@ -16,6 +16,12 @@ export default defineConfig({
         target: 'http://fcs.botzooo.com:30080',
         changeOrigin: true,
         rewrite: (path) => path
+      },
+      '/ws': {
+        target: 'ws://fcs.botzooo.com:30081',
+        ws: true,
+        changeOrigin: true,
+        rewrite: (path) => path
       }
     }
   }

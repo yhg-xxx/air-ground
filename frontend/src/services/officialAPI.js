@@ -1,12 +1,12 @@
 import axios from 'axios'
 
 // ===================== 官方配置 =====================
-const HOST = ""
-const PORT = ""
+const HOST = "fcs.botzooo.com"
+const PORT = 30080
 const WS_HOST = "fcs.botzooo.com"
 const WS_PORT = 30081
 const USERNAME = "fcs002"
-const PASSWORD = "fcs002fcs002"
+const PASSWORD = "wa729461"
 
 const MAX = 2000
 const MIN = 1000
@@ -15,7 +15,7 @@ const MIN_INTERVAL = 0.1
 
 // axios 代理配置
 const officialAPI = axios.create({
-  baseURL: '/api',
+  baseURL: '/api',  // 使用相对路径，通过vite代理
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
@@ -81,8 +81,16 @@ export class WebSocketManager {
 
   async connect(token) {
     try {
+      // 避免重复连接
+      if (this.isConnected && this.ws) {
+        console.log('WebSocket已经连接，无需重复连接')
+        return
+      }
+      
       this.token = token
-      const wsUrl = `ws://${WS_HOST}:${WS_PORT}?token=${token}`
+      // 使用相对路径的WebSocket连接，通过vite代理
+      const wsUrl = `ws://localhost:5174/ws?token=${token}`
+      console.log('正在连接WebSocket:', wsUrl)
       this.ws = new WebSocket(wsUrl)
 
       this.ws.onopen = () => {
@@ -100,11 +108,14 @@ export class WebSocketManager {
         }
       }
 
-      this.ws.onclose = () => {
-        console.log('WebSocket连接关闭')
+      this.ws.onclose = (event) => {
+        console.log('WebSocket连接关闭:', event.code, event.reason)
         this.isConnected = false
         this.emit('disconnected')
-        this.autoReconnect()
+        // 只有在正常关闭时才重连
+        if (event.code !== 1000) {
+          this.autoReconnect()
+        }
       }
 
       this.ws.onerror = (error) => {
@@ -113,6 +124,7 @@ export class WebSocketManager {
       }
 
     } catch (error) {
+      console.error('WebSocket连接失败:', error)
       throw new Error('WebSocket连接失败: ' + error.message)
     }
   }

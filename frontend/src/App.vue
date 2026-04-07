@@ -14,13 +14,9 @@
           text-color="#bfcbd9"
           active-text-color="#409EFF"
         >
-          <el-menu-item index="/dashboard">
-            <el-icon><House /></el-icon>
-            <span>控制台</span>
-          </el-menu-item>
-          <el-menu-item index="/control-center">
+          <el-menu-item index="/control">
             <el-icon><Monitor /></el-icon>
-            <span>控制中心</span>
+            <span>空地协同控制</span>
           </el-menu-item>
         </el-menu>
       </el-aside>
@@ -65,7 +61,7 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { House, Camera, User, ArrowDown, Operation, VideoPlay, Monitor } from '@element-plus/icons-vue'
+import { House, User, ArrowDown,Monitor } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -85,7 +81,7 @@ const handleCommand = (command) => {
       router.push('/auth')
       break
     case 'logout':
-      localStorage.removeItem('token')
+      localStorage.removeItem('official_token')
       ElMessage.success('已退出登录')
       router.push('/auth')
       break

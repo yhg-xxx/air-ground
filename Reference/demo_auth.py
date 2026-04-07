@@ -4,7 +4,7 @@ import requests
 HOST = "fcs.botzooo.com"
 PORT = 30080
 USERNAME = "fcs002"
-PASSWORD = "fcs002fcs002"
+PASSWORD = "wa729461"
 
 def get_token():
     url = f"http://{HOST}:{PORT}/api/auth/token"

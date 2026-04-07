@@ -7,7 +7,7 @@ WS_PORT = 30081
 
 # 认证信息
 USERNAME = "fcs002"
-PASSWORD = "fcs002fcs002"
+PASSWORD = "wa729461"
 
 # API端点
 TOKEN_ENDPOINT = f"http://{API_HOST}:{API_PORT}/api/auth/token"
