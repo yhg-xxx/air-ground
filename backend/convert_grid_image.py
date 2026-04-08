@@ -130,9 +130,16 @@ def convert_grid_image(
     save_visualization(grid, str(vis_path))
     print(f"可视化图已保存: {vis_path}")
     
-    # 5. 保存带坐标的详细图
+    # 5. 检测蓝色拱门
+    gates = detect_gates(input_path, grid_cols, grid_rows)
+    if gates:
+        print(f"检测到 {len(gates)} 个蓝色拱门:")
+        for i, gate in enumerate(gates):
+            print(f"  拱门{i+1}: 中心={gate['center']}, 尺寸={gate['width']}×{gate['height']}格")
+    
+    # 6. 保存带坐标的详细图（含拱门标注）
     detail_path = output_path / "grid_detail.png"
-    save_detailed_visualization(grid, str(detail_path), grid_cols, grid_rows)
+    save_detailed_visualization(grid, str(detail_path), grid_cols, grid_rows, gates)
     print(f"详细图已保存: {detail_path}")
     
     return grid
@@ -154,9 +161,113 @@ def save_visualization(grid: np.ndarray, output_path: str):
     cv2.imwrite(output_path, vis_large)
 
 
-def save_detailed_visualization(grid: np.ndarray, output_path: str, cols: int, rows: int):
+def detect_gates(image_path: str, grid_cols: int, grid_rows: int):
+    """检测蓝色拱门位置并返回格栅坐标"""
+    image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        return []
+    
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    # 检测蓝色/青色区域
+    cyan_mask = cv2.inRange(hsv, np.array([80, 50, 50]), np.array([100, 255, 255]))
+    
+    # 找到连通区域
+    contours, _ = cv2.findContours(cyan_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    gates = []
+    img_h, img_w = image.shape[:2]
+    cell_w = img_w / grid_cols
+    cell_h = img_h / grid_rows
+    
+    for contour in contours:
+        M = cv2.moments(contour)
+        if M['m00'] > 0:
+            cx = int(M['m10'] / M['m00'])
+            cy = int(M['m01'] / M['m00'])
+            
+            # 转换为格栅坐标
+            grid_x = int(cx / cell_w)
+            grid_y = int(cy / cell_h)
+            
+            # 计算拱门的宽高（格栅单位）
+            x, y, w, h = cv2.boundingRect(contour)
+            gate_w = max(1, int(w / cell_w))
+            gate_h = max(1, int(h / cell_h))
+            
+            gates.append({
+                'center': (grid_x, grid_y),
+                'width': gate_w,
+                'height': gate_h,
+                'pixel_y': cy,
+                'pixel_x': cx
+            })
+    
+    # 按照实际迷宫路径顺序排序（基于坐标位置手动指定顺序）
+    gates = sort_gates_by_path_order(gates)
+    return gates
+
+
+def sort_gates_by_path_order(gates):
+    """按照实际走迷宫的路径顺序排序拱门"""
+    if not gates:
+        return gates
+    
+    # 定义拱门的正确顺序（基于坐标位置）
+    # 顺序: 1=起点(339,103), 2=(331,943), 3=(295,1003), 4=(219,1087), 
+    #        5=(131,999), 6=(19,1087), 7=(75,1167), 8=(323,1167), 9=终点(391,1107)
+    
+    # 根据坐标位置匹配顺序
+    # 顺序: 1-8为下半部分拱门，9为最上边的拱门
+    order_coords = [
+        (331, 943),   # 1
+        (295, 1003),  # 2
+        (219, 1087),  # 3
+        (131, 999),   # 4
+        (19, 1087),   # 5
+        (75, 1167),   # 6
+        (323, 1167),  # 7
+        (391, 1107),  # 8
+        (339, 103),   # 9 - 最上边的拱门
+    ]
+    
+    sorted_gates = []
+    used = set()
+    
+    for target_x, target_y in order_coords:
+        best_gate = None
+        best_dist = float('inf')
+        best_idx = -1
+        
+        for i, gate in enumerate(gates):
+            if i in used:
+                continue
+            gx, gy = gate['center']
+            dist = abs(gx - target_x) + abs(gy - target_y)
+            if dist < best_dist:
+                best_dist = dist
+                best_gate = gate
+                best_idx = i
+        
+        if best_gate and best_dist < 50:  # 允许一定误差
+            sorted_gates.append(best_gate)
+            used.add(best_idx)
+    
+    # 添加未匹配的拱门
+    for i, gate in enumerate(gates):
+        if i not in used:
+            sorted_gates.append(gate)
+    
+    return sorted_gates
+
+
+def save_detailed_visualization(grid: np.ndarray, output_path: str, cols: int, rows: int, 
+                                  gates: list = None):
     """保存带网格线和坐标的详细可视化"""
     import matplotlib.pyplot as plt
+    import matplotlib
+    # 配置中文字体
+    matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+    matplotlib.rcParams['axes.unicode_minus'] = False
     
     # 按真实比例计算图像尺寸
     aspect_ratio = cols / rows  # 宽/高比例
@@ -185,9 +296,26 @@ def save_detailed_visualization(grid: np.ndarray, output_path: str, cols: int, r
     # 设置刻度
     ax.set_xticks(range(0, cols, 10))
     ax.set_yticks(range(0, rows, 10))
+    # 标注蓝色拱门
+    if gates:
+        for i, gate in enumerate(gates):
+            cx, cy = gate['center']
+            gw, gh = gate['width'], gate['height']
+            
+            # 画矩形标注
+            rect = plt.Rectangle((cx - gw/2 - 0.5, cy - gh/2 - 0.5), gw, gh,
+                                  linewidth=2, edgecolor='blue', facecolor='cyan', alpha=0.5)
+            ax.add_patch(rect)
+            
+            # 添加文字标签
+            label = f'拱门{i+1}'
+            ax.annotate(label, (cx, cy), color='blue', fontsize=8, 
+                        ha='center', va='center', fontweight='bold',
+                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
     ax.set_xlabel(f'X (格) - 共{cols}列')
     ax.set_ylabel(f'Y (格) - 共{rows}行')
-    ax.set_title(f'格栅地图 {cols}×{rows} (绿色=可通行, 灰色=障碍物)')
+    ax.set_title(f'格栅地图 {cols}×{rows} (绿色=可通行, 灰色=障碍物, 蓝色=拱门)')
     
     plt.tight_layout()
     plt.savefig(output_path, dpi=150)

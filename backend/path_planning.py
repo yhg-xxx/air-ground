@@ -7,7 +7,12 @@ import numpy as np
 import json
 import cv2
 import matplotlib.pyplot as plt
+import matplotlib
 from pathlib import Path
+
+# 配置中文字体
+matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+matplotlib.rcParams['axes.unicode_minus'] = False
 from collections import deque
 import heapq
 
@@ -22,7 +27,7 @@ class PathPlanner:
         print(f"格栅尺寸: {self.cols} × {self.rows}")
         
     def find_gates(self, original_image_path: str):
-        """找到蓝色拱门（起点和终点）"""
+        """找到蓝色拱门（起点和终点），并返回详细信息"""
         # 读取原始图像
         image = cv2.imdecode(np.fromfile(original_image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -53,14 +58,25 @@ class PathPlanner:
                 grid_x = max(0, min(grid_x, self.cols - 1))
                 grid_y = max(0, min(grid_y, self.rows - 1))
                 
-                gates.append((grid_x, grid_y, cy))  # 包含原始y坐标用于排序
+                # 计算拱门的宽高（格栅单位）
+                x, y, w, h = cv2.boundingRect(contour)
+                gate_w = max(1, int(w / cell_w))
+                gate_h = max(1, int(h / cell_h))
+                
+                gates.append({
+                    'center': (grid_x, grid_y),
+                    'width': gate_w,
+                    'height': gate_h,
+                    'pixel_y': cy  # 用于排序
+                })
         
-        # 按y坐标排序，下边的是起点，上边的是终点
-        gates.sort(key=lambda g: g[2])
+        # 按照实际迷宫路径顺序排序
+        gates = self._sort_gates_by_path_order(gates)
+        self.gates = gates  # 保存拱门信息用于可视化
         
         if len(gates) >= 2:
-            start = (gates[0][0], gates[0][1])   # 下边的门（起点）
-            end = (gates[-1][0], gates[-1][1])   # 上边的门（终点）
+            start = gates[0]['center']   # 下边的门（起点）
+            end = gates[-1]['center']    # 上边的门（终点）
             print(f"起点: {start}, 终点: {end}")
             return start, end
         else:
@@ -69,6 +85,53 @@ class PathPlanner:
             start = (self.cols // 2, self.rows - 10)  # 下边中间
             end = (self.cols // 2, 10)                # 上边中间
             return start, end
+    
+    def _sort_gates_by_path_order(self, gates):
+        """按照实际走迷宫的路径顺序排序拱门"""
+        if not gates:
+            return gates
+        
+        # 定义拱门的正确顺序（基于坐标位置）
+        # 顺序: 1-8为下半部分拱门，9为最上边的拱门
+        order_coords = [
+            (331, 943),   # 1
+            (295, 1003),  # 2
+            (219, 1087),  # 3
+            (131, 999),   # 4
+            (19, 1087),   # 5
+            (75, 1167),   # 6
+            (323, 1167),  # 7
+            (391, 1107),  # 8
+            (339, 103),   # 9 - 最上边的拱门
+        ]
+        
+        sorted_gates = []
+        used = set()
+        
+        for target_x, target_y in order_coords:
+            best_gate = None
+            best_dist = float('inf')
+            best_idx = -1
+            
+            for i, gate in enumerate(gates):
+                if i in used:
+                    continue
+                gx, gy = gate['center']
+                dist = abs(gx - target_x) + abs(gy - target_y)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_gate = gate
+                    best_idx = i
+            
+            if best_gate and best_dist < 50:
+                sorted_gates.append(best_gate)
+                used.add(best_idx)
+        
+        for i, gate in enumerate(gates):
+            if i not in used:
+                sorted_gates.append(gate)
+        
+        return sorted_gates
     
     def a_star(self, start, end):
         """A*算法找最短路径"""
@@ -159,6 +222,23 @@ class PathPlanner:
             
             plt.legend()
         
+        # 标注蓝色拱门
+        if hasattr(self, 'gates') and self.gates:
+            for i, gate in enumerate(self.gates):
+                cx, cy = gate['center']
+                gw, gh = gate['width'], gate['height']
+                
+                # 画矩形标注
+                rect = plt.Rectangle((cx - gw/2, cy - gh/2), gw, gh,
+                                      linewidth=2, edgecolor='blue', facecolor='cyan', alpha=0.4)
+                plt.gca().add_patch(rect)
+                
+                # 添加文字标签
+                label = f'拱门{i+1}'
+                plt.annotate(label, (cx, cy - gh/2 - 5), color='blue', fontsize=10, 
+                            ha='center', va='bottom', fontweight='bold',
+                            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        
         plt.xlabel('X (格)')
         plt.ylabel('Y (格)')
         
@@ -193,6 +273,9 @@ class PathPlanner:
         print("=" * 60)
         
         # 1. 找到起点终点
+        # 先检测拱门（用于可视化）
+        self.find_gates(original_image_path)
+        
         if manual_start and manual_end:
             start, end = manual_start, manual_end
             print(f"使用手动设置: 起点: {start}, 终点: {end}")
