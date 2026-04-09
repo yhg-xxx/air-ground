@@ -27,6 +27,8 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { officialServerAPI } from '../services/officialAPI'
+import { authAPI } from '../services/api'
+import {Key} from "@element-plus/icons-vue";
 
 const router = useRouter()
 
@@ -44,8 +46,11 @@ const handleLogin = async () => {
     // 保存token到localStorage
     localStorage.setItem('official_token', token)
     
+    // 将token传递给后端
+    await authAPI.setFrontendToken(token)
+    
     ElMessage.success('认证成功')
-    router.push('/control')
+    await router.push('/control')
   } catch (error) {
     ElMessage.error('认证失败：' + error.message)
   } finally {

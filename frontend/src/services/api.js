@@ -43,6 +43,14 @@ export const authAPI = {
   // 获取Token
   getToken: () => {
     return api.post('/api/auth/token')
+  },
+  
+  // 设置前端Token
+  setFrontendToken: (token, expiresIn = 7200) => {
+    return api.post('/api/auth/token/frontend', {
+      token,
+      expires_in: expiresIn
+    })
   }
 }
 

@@ -61,6 +61,38 @@ export const officialServerAPI = {
     } catch (error) {
       throw new Error("抓拍失败：" + error.message)
     }
+  },
+
+  // 开始降落
+  startLanding: async (targetArucoId = 0) => {
+    try {
+      const response = await officialAPI.post('/landing/start', {
+        target_aruco_id: targetArucoId
+      })
+      return response.data
+    } catch (error) {
+      throw new Error("开始降落失败：" + error.message)
+    }
+  },
+
+  // 获取降落状态
+  getLandingStatus: async () => {
+    try {
+      const response = await officialAPI.get('/landing/status')
+      return response.data
+    } catch (error) {
+      throw new Error("获取降落状态失败：" + error.message)
+    }
+  },
+
+  // 取消降落
+  cancelLanding: async () => {
+    try {
+      const response = await officialAPI.post('/landing/cancel')
+      return response.data
+    } catch (error) {
+      throw new Error("取消降落失败：" + error.message)
+    }
   }
 }
 

@@ -212,6 +212,20 @@
                     云台复位
                   </el-button>
                 </div>
+
+                <!-- 降落测试按钮 -->
+                <div class="landing-buttons">
+                  <h4>降落测试</h4>
+                  <el-button type="success" @click="startLandingTest">
+                    开始降落测试
+                  </el-button>
+                  <el-button type="info" @click="getLandingStatusTest">
+                    获取降落状态
+                  </el-button>
+                  <el-button type="danger" @click="cancelLandingTest">
+                    取消降落
+                  </el-button>
+                </div>
               </div>
             </el-tab-pane>
           </el-tabs>
@@ -251,9 +265,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { officialServerAPI, WebSocketManager, CONTROL_CHANNELS, CONTROL_VALUES } from '../services/officialAPI'
+import {onMounted, onUnmounted, ref} from 'vue'
+import {ElMessage} from 'element-plus'
+import {CONTROL_CHANNELS, officialServerAPI, WebSocketManager} from '../services/officialAPI'
+import {Camera, DataAnalysis, Monitor, Operation} from "@element-plus/icons-vue";
 
 // WebSocket管理
 const wsManager = new WebSocketManager()
@@ -373,9 +388,8 @@ const captureImage = async () => {
       ElMessage.error('未获取到认证token，请重新认证')
       return
     }
-    
-    const imageUrl = await officialServerAPI.captureImage(token)
-    capturedImage.value = imageUrl
+
+    capturedImage.value = await officialServerAPI.captureImage(token)
     ElMessage.success('图像抓拍成功')
   } catch (error) {
     ElMessage.error('图像抓拍失败：' + error.message)
@@ -389,6 +403,44 @@ const clearImage = () => {
   if (capturedImage.value) {
     URL.revokeObjectURL(capturedImage.value)
     capturedImage.value = null
+  }
+}
+
+// 开始降落测试
+const startLandingTest = async () => {
+  try {
+    const result = await officialServerAPI.startLanding(0)
+    if (result.status === 'success') {
+      ElMessage.success(result.message)
+    } else {
+      ElMessage.error(result.message)
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+// 获取降落状态
+const getLandingStatusTest = async () => {
+  try {
+    const result = await officialServerAPI.getLandingStatus()
+    ElMessage.info(`降落状态: ${result.status}, 错误信息: ${result.error_message || '无'}`)
+  } catch (error) {
+    ElMessage.error(error.message)
+  }
+}
+
+// 取消降落
+const cancelLandingTest = async () => {
+  try {
+    const result = await officialServerAPI.cancelLanding()
+    if (result.status === 'success') {
+      ElMessage.success(result.message)
+    } else {
+      ElMessage.error(result.message)
+    }
+  } catch (error) {
+    ElMessage.error(error.message)
   }
 }
 
@@ -491,6 +543,22 @@ onUnmounted(() => {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 20px;
+}
+
+.landing-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.landing-buttons h4 {
+  width: 100%;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .image-container {

@@ -104,3 +104,13 @@ class TokenService:
             return token
         else:
             raise Exception(f"获取Token失败：{result.get('msg', '未知错误')}")
+    
+    @classmethod
+    def set_frontend_token(cls, token: str, expires_in: int = 7200):
+        """设置前端传递的Token
+        
+        Args:
+            token: 前端传递的Token字符串
+            expires_in: Token有效期（秒），默认7200秒（2小时）
+        """
+        cls._save_token(token, expires_in)

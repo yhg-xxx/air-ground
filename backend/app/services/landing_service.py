@@ -224,7 +224,6 @@ class LandingService:
             logger.info("开始检测Aruco码")
             self.status = LandingStatus.DETECTING
             detection_count = 0
-            aruco_position = None
             
             while detection_count < self.detection_threshold:
                 logger.debug("正在捕获图像...")
@@ -234,7 +233,6 @@ class LandingService:
                     position = self._detect_aruco(image_data)
                     if position:
                         logger.info(f"检测到Aruco码，位置: {position}")
-                        aruco_position = position
                         detection_count += 1
                         self.monitor.record_detection(True)
                         logger.info(f"Aruco码检测计数: {detection_count}/{self.detection_threshold}")
@@ -369,7 +367,7 @@ class LandingService:
                         center_x = int((corner[0][0] + corner[1][0] + corner[2][0] + corner[3][0]) / 4)
                         center_y = int((corner[0][1] + corner[1][1] + corner[2][1] + corner[3][1]) / 4)
                         logger.info(f"找到目标Aruco码ID: {self.target_aruco_id}，中心坐标: ({center_x}, {center_y})")
-                        return (center_x, center_y)
+                        return center_x, center_y
                 logger.warning(f"未找到目标Aruco码ID: {self.target_aruco_id}")
             else:
                 logger.debug("未检测到任何Aruco码")
@@ -400,7 +398,7 @@ class LandingService:
         control_x = max(CONTROL_MIN, min(CONTROL_MAX, control_x))
         control_y = max(CONTROL_MIN, min(CONTROL_MAX, control_y))
         
-        return (int(control_x), int(control_y))
+        return int(control_x), int(control_y)
     
     def _calculate_descend_control(self) -> int:
         """计算下降控制量
