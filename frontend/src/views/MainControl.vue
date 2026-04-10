@@ -41,7 +41,7 @@
                   {{ telemetryData.aircraft.voltage }}V
                 </el-descriptions-item>
                 <el-descriptions-item label="GPS">
-                  {{ telemetryData.aircraft.gps || '无数据' }}
+                  {{ formatGps(telemetryData.aircraft.gps) }}
                 </el-descriptions-item>
                 <el-descriptions-item label="速度">
                   {{ telemetryData.aircraft.speed }}m/s
@@ -59,7 +59,7 @@
                   {{ telemetryData.vehicle.voltage }}V
                 </el-descriptions-item>
                 <el-descriptions-item label="GPS">
-                  {{ telemetryData.vehicle.gps || '无数据' }}
+                  {{ formatGps(telemetryData.vehicle.gps) }}
                 </el-descriptions-item>
                 <el-descriptions-item label="速度">
                   {{ telemetryData.vehicle.speed }}m/s
@@ -84,118 +84,77 @@
           <el-tabs v-model="activeControlTab">
             <!-- 无人车控制 -->
             <el-tab-pane label="无人车控制" name="vehicle">
-              <div class="control-panel">
-                <h4>前进后退控制</h4>
-                <el-slider
-                  v-model="vehicleDirection"
-                  :min="1000"
-                  :max="2000"
-                  :step="1"
-                  @change="handleVehicleControl"
-                />
-                <div class="slider-labels">
-                  <span>后退</span>
-                  <span>中立</span>
-                  <span>前进</span>
+              <div class="control-panel joystick-mode">
+                <div class="joystick-wrapper">
+                  <VirtualJoystick
+                    :size="200"
+                    label="移动控制"
+                    topLabel="前进"
+                    bottomLabel="后退"
+                    leftLabel="左转"
+                    rightLabel="右转"
+                    :showSpeedLimit="true"
+                    @change="handleVehicleJoystick"
+                  />
                 </div>
-
-                <h4>转向控制</h4>
-                <el-slider
-                  v-model="vehicleThrottle"
-                  :min="1000"
-                  :max="2000"
-                  :step="1"
-                  @change="handleVehicleControl"
-                />
-                <div class="slider-labels">
-                  <span>左转向</span>
-                  <span>中立</span>
-                  <span>右转向</span>
+                <div class="control-tips">
+                  <p><strong>操作说明：</strong></p>
+                  <p>• 上下：前进/后退</p>
+                  <p>• 左右：左转/右转</p>
+                  <p>• 松手自动归中停止</p>
                 </div>
               </div>
             </el-tab-pane>
 
             <!-- 无人机控制 -->
             <el-tab-pane label="无人机控制" name="aircraft">
-              <div class="control-panel">
-                <h4>左转右转</h4>
-                <el-slider
-                  v-model="aircraftDirection"
-                  :min="1000"
-                  :max="2000"
-                  :step="1"
-                  @change="handleAircraftControl"
-                />
-                <div class="slider-labels">
-                  <span>左转</span>
-                  <span>中立</span>
-                  <span>右转</span>
+              <div class="control-panel joystick-mode">
+                <div class="dual-joystick-container">
+                  <!-- 左摇杆：上升下降 + 左转右转 -->
+                  <div class="joystick-wrapper">
+                    <VirtualJoystick
+                      :size="180"
+                      label="姿态控制"
+                      topLabel="上升"
+                      bottomLabel="下降"
+                      leftLabel="左转"
+                      rightLabel="右转"
+                      :showSpeedLimit="true"
+                      @change="handleAircraftLeftJoystick"
+                    />
+                  </div>
+                  
+                  <!-- 右摇杆：前进后退 + 左移右移 -->
+                  <div class="joystick-wrapper">
+                    <VirtualJoystick
+                      :size="180"
+                      label="移动控制"
+                      topLabel="前进"
+                      bottomLabel="后退"
+                      leftLabel="左移"
+                      rightLabel="右移"
+                      :showSpeedLimit="true"
+                      @change="handleAircraftRightJoystick"
+                    />
+                  </div>
                 </div>
-
-                <h4>上升下降</h4>
-                <el-slider
-                  v-model="aircraftAltitude"
-                  :min="1000"
-                  :max="2000"
-                  :step="1"
-                  @change="handleAircraftControl"
-                />
-                <div class="slider-labels">
-                  <span>下降</span>
-                  <span>中立</span>
-                  <span>上升</span>
-                </div>
-
-                <h4>左移右移</h4>
-                <el-slider
-                  v-model="aircraftMovement"
-                  :min="1000"
-                  :max="2000"
-                  :step="1"
-                  @change="handleAircraftControl"
-                />
-                <div class="slider-labels">
-                  <span>左移</span>
-                  <span>中立</span>
-                  <span>右移</span>
-                </div>
-
-                <h4>前进后退</h4>
-                <el-slider
-                  v-model="aircraftThrottle"
-                  :min="1000"
-                  :max="2000"
-                  :step="1"
-                  @change="handleAircraftControl"
-                />
-                <div class="slider-labels">
-                  <span>后退</span>
-                  <span>中立</span>
-                  <span>前进</span>
+                
+                <div class="control-tips small">
+                  <p><strong>左摇杆：</strong>上升/下降 + 左转/右转</p>
+                  <p><strong>右摇杆：</strong>前进/后退 + 左移/右移</p>
                 </div>
 
                 <h4>云台控制</h4>
-                <div class="gimbal-controls">
-                  <div class="gimbal-item">
-                    <span>俯仰</span>
-                    <el-slider
-                      v-model="aircraftGimbalPitch"
-                      :min="1000"
-                      :max="2000"
-                      :step="1"
-                      @change="handleAircraftControl"
-                    />
-                  </div>
-                  <div class="gimbal-item">
-                    <span>横滚</span>
-                    <el-slider
-                      v-model="aircraftGimbalRoll"
-                      :min="1000"
-                      :max="2000"
-                      :step="1"
-                      @change="handleAircraftControl"
-                    />
-                  </div>
+                <div class="gimbal-joystick-wrapper">
+                  <VirtualJoystick
+                    :size="120"
+                    topLabel="上仰"
+                    bottomLabel="下俯"
+                    leftLabel="左滚"
+                    rightLabel="右滚"
+                    :autoCenter="false"
+                    @change="handleGimbalJoystick"
+                  />
                 </div>
 
                 <div class="drone-buttons">
@@ -269,6 +228,7 @@ import {onMounted, onUnmounted, ref} from 'vue'
 import {ElMessage} from 'element-plus'
 import {CONTROL_CHANNELS, officialServerAPI, WebSocketManager} from '../services/officialAPI'
 import {Camera, DataAnalysis, Monitor, Operation} from "@element-plus/icons-vue";
+import VirtualJoystick from '../components/VirtualJoystick.vue'
 
 // WebSocket管理
 const wsManager = new WebSocketManager()
@@ -281,8 +241,8 @@ const telemetryData = ref({
 })
 
 // 控制值
-const vehicleDirection = ref(1500) // 前进后退
-const vehicleThrottle = ref(1500) // 转向
+const vehicleThrottle = ref(1500)  // 油门（前进后退）：前进=2000, 中=1500, 后退=1000
+const vehicleSteering = ref(1500)  // 转向：左转=2000, 中=1500, 右转=1000
 
 const aircraftDirection = ref(1500) // 左转右转
 const aircraftAltitude = ref(1500) // 上升下降
@@ -296,6 +256,16 @@ const activeStatusTab = ref(['aircraft'])
 const activeControlTab = ref('vehicle')
 const capturedImage = ref(null)
 const isCapturing = ref(false)
+
+// GPS格式化函数
+const formatGps = (gps) => {
+  if (!gps) return '无数据'
+  if (Array.isArray(gps) && gps.length >= 2) {
+    return `[ ${gps[0].toFixed(6)}, ${gps[1].toFixed(6)} ]`
+  }
+  if (typeof gps === 'string' && gps.trim()) return gps
+  return '无数据'
+}
 
 // 连接WebSocket
 const connectWebSocket = async () => {
@@ -325,7 +295,8 @@ const handleVehicleControl = () => {
     return
   }
   
-  wsManager.sendControl('vehicle', CONTROL_CHANNELS.VEHICLE_DIRECTION, vehicleDirection.value)
+  // 通道1=转向，通道2=油门（前进后退）
+  wsManager.sendControl('vehicle', CONTROL_CHANNELS.VEHICLE_STEERING, vehicleSteering.value)
   wsManager.sendControl('vehicle', CONTROL_CHANNELS.VEHICLE_THROTTLE, vehicleThrottle.value)
 }
 
@@ -340,6 +311,58 @@ const handleAircraftControl = () => {
   wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_ALTITUDE, aircraftAltitude.value)
   wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_MOVEMENT, aircraftMovement.value)
   wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_THROTTLE, aircraftThrottle.value)
+  wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_GIMBAL_PITCH, aircraftGimbalPitch.value)
+  wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_GIMBAL_ROLL, aircraftGimbalRoll.value)
+}
+
+// 处理无人车摇杆控制
+const handleVehicleJoystick = (data) => {
+  if (!wsConnected.value) return
+  
+  // X轴控制转向：左负右正，需要反转（左转=2000, 右转=1000）
+  // Y轴控制油门：上正下负（前进=2000, 后退=1000）
+  vehicleSteering.value = 3000 - data.xValue // 反转X轴
+  vehicleThrottle.value = data.yValue
+  
+  wsManager.sendControl('vehicle', CONTROL_CHANNELS.VEHICLE_STEERING, vehicleSteering.value)
+  wsManager.sendControl('vehicle', CONTROL_CHANNELS.VEHICLE_THROTTLE, vehicleThrottle.value)
+}
+
+// 处理无人机左摇杆（上升下降 + 左转右转）
+const handleAircraftLeftJoystick = (data) => {
+  if (!wsConnected.value) return
+  
+  // X轴控制左转右转
+  // Y轴控制上升下降
+  aircraftDirection.value = data.xValue
+  aircraftAltitude.value = data.yValue
+  
+  wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_DIRECTION, aircraftDirection.value)
+  wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_ALTITUDE, aircraftAltitude.value)
+}
+
+// 处理无人机右摇杆（前进后退 + 左移右移）
+const handleAircraftRightJoystick = (data) => {
+  if (!wsConnected.value) return
+  
+  // X轴控制左移右移
+  // Y轴控制前进后退
+  aircraftMovement.value = data.xValue
+  aircraftThrottle.value = data.yValue
+  
+  wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_MOVEMENT, aircraftMovement.value)
+  wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_THROTTLE, aircraftThrottle.value)
+}
+
+// 处理云台摇杆控制
+const handleGimbalJoystick = (data) => {
+  if (!wsConnected.value) return
+  
+  // X轴控制横滚
+  // Y轴控制俯仰
+  aircraftGimbalRoll.value = data.xValue
+  aircraftGimbalPitch.value = data.yValue
+  
   wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_GIMBAL_PITCH, aircraftGimbalPitch.value)
   wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_GIMBAL_ROLL, aircraftGimbalRoll.value)
 }
@@ -536,6 +559,55 @@ onUnmounted(() => {
   margin-bottom: 5px;
   font-size: 14px;
   font-weight: 500;
+}
+
+.joystick-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.joystick-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dual-joystick-container {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.gimbal-joystick-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 15px;
+}
+
+.control-tips {
+  background: #f5f7fa;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #606266;
+  width: 100%;
+  max-width: 300px;
+}
+
+.control-tips.small {
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.control-tips p {
+  margin: 4px 0;
+}
+
+.control-tips strong {
+  color: #303133;
 }
 
 .drone-buttons {

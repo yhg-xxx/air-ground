@@ -261,10 +261,11 @@ export class WebSocketManager {
 }
 
 // 官方通道定义（100% 匹配文档）
+// 车辆：通道1=转向（左转2000,右转1000） 通道2=油门（前进2000,后退1000）
 export const CONTROL_CHANNELS = {
   // 车辆通道
-  VEHICLE_DIRECTION: 1,    // 前进后退
-  VEHICLE_THROTTLE: 2,     // 转向
+  VEHICLE_STEERING: 1,     // 转向：左转=2000, 中=1500, 右转=1000
+  VEHICLE_THROTTLE: 2,     // 油门：前进=2000, 中=1500, 后退=1000
 
   // 无人机通道
   AIRCRAFT_DIRECTION: 1,     // 左转右转
