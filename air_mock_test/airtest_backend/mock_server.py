@@ -7,15 +7,7 @@ import time
 import threading
 import websockets
 import asyncio
-
-# 全局变量
-TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-AUTH_USERNAME = "fcs002"
-AUTH_PASSWORD = "fcs002fcs002"
-
-# 模拟物体位置
-aircraft_position = [0.5687, 1.3854]
-vehicle_position = [0.5687, 1.3854]
+from auto_landing import auto_landing_controller
 
 # 全局变量
 TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -27,18 +19,23 @@ aircraft_position = [0.5687, 1.3854]
 aircraft_altitude = 10.0  # 无人机高度
 vehicle_position = [0.5687, 1.3854]
 
+# 模拟云台状态
+gimbal_pitch = 0.0  # 云台俯仰角度（-90到90度）
+gimbal_roll = 0.0   # 云台横滚角度（-45到45度）
+
+
 # 控制指令处理
 def handle_control_command(command):
-    global aircraft_position, aircraft_altitude, vehicle_position
-    
+    global aircraft_position, aircraft_altitude, vehicle_position, gimbal_pitch, gimbal_roll
+
     target = command.get('target')
     channel = command.get('channel')
     value = command.get('value')
-    
+
     # 移动速度因子
     speed = 0.001
     altitude_speed = 0.1  # 高度变化速度
-    
+
     if target == 'aircraft':
         if channel == 1:  # 左转/右转
             if value > 1500:  # 右转
@@ -57,11 +54,29 @@ def handle_control_command(command):
                 aircraft_position[0] += speed * (value - 1500) / 500
             elif value < 1500:  # 左移
                 aircraft_position[0] -= speed * (1500 - value) / 500
-        elif channel == 4:  # 前进/后退
-            if value > 1500:  # 前进
-                aircraft_position[1] += speed * (value - 1500) / 500
-            elif value < 1500:  # 后退
-                aircraft_position[1] -= speed * (1500 - value) / 500
+        elif channel == 4:  # 前进 / 后退 —— 已修复方向
+            if value > 1500:  # 前进（2000）
+                aircraft_position[1] -= speed * (value - 1500) / 500
+            elif value < 1500:  # 后退（1000）
+                aircraft_position[1] += speed * (1500 - value) / 500
+        elif channel == 5:  # 云台俯仰
+            if value > 1500:  # 仰
+                gimbal_pitch += 1.0 * (value - 1500) / 500
+                if gimbal_pitch > 90:
+                    gimbal_pitch = 90
+            elif value < 1500:  # 俯
+                gimbal_pitch -= 1.0 * (1500 - value) / 500
+                if gimbal_pitch < -90:
+                    gimbal_pitch = -90
+        elif channel == 6:  # 云台横滚
+            if value > 1500:  # 左
+                gimbal_roll += 1.0 * (value - 1500) / 500
+                if gimbal_roll > 45:
+                    gimbal_roll = 45
+            elif value < 1500:  # 右
+                gimbal_roll -= 1.0 * (1500 - value) / 500
+                if gimbal_roll < -45:
+                    gimbal_roll = -45
         elif channel == 7:  # 起飞
             if value >= 1500:  # 执行起飞
                 aircraft_altitude = 10.0  # 设置初始高度
@@ -73,20 +88,21 @@ def handle_control_command(command):
                 aircraft_position = [0.5687, 1.3854]  # 返回到初始位置
         elif channel == 10:  # 云台复位
             if value >= 1500:  # 执行云台复位
-                # 云台复位逻辑
-                pass
-    
+                gimbal_pitch = 0.0
+                gimbal_roll = 0.0
+
     elif target == 'vehicle':
-        if channel == 1:  # 前进/后退
+        if channel == 1:  # 前进/后退 —— 已修复方向
             if value > 1500:  # 前进
-                vehicle_position[1] += speed * (value - 1500) / 500
+                vehicle_position[1] -= speed * (value - 1500) / 500
             elif value < 1500:  # 后退
-                vehicle_position[1] -= speed * (1500 - value) / 500
+                vehicle_position[1] += speed * (1500 - value) / 500
         elif channel == 2:  # 左转/右转
             if value > 1500:  # 右转
                 vehicle_position[0] += speed * (value - 1500) / 500
             elif value < 1500:  # 左转
                 vehicle_position[0] -= speed * (1500 - value) / 500
+
 
 # 模拟心跳和遥测数据发送
 async def send_telemetry(websocket):
@@ -94,7 +110,7 @@ async def send_telemetry(websocket):
         # 发送心跳
         await websocket.send(json.dumps({"type": "ping"}))
         await asyncio.sleep(1)
-        
+
         # 发送无人机电量
         await websocket.send(json.dumps({
             "type": "aircraft_telemetry_power",
@@ -104,7 +120,7 @@ async def send_telemetry(websocket):
             }
         }))
         await asyncio.sleep(1)
-        
+
         # 发送无人机定位
         await websocket.send(json.dumps({
             "type": "aircraft_telemetry_gnss",
@@ -118,7 +134,17 @@ async def send_telemetry(websocket):
             }
         }))
         await asyncio.sleep(1)
-        
+
+        # 发送云台状态
+        await websocket.send(json.dumps({
+            "type": "aircraft_telemetry_gimbal",
+            "data": {
+                "pitch": gimbal_pitch,
+                "roll": gimbal_roll
+            }
+        }))
+        await asyncio.sleep(1)
+
         # 发送车辆电量
         await websocket.send(json.dumps({
             "type": "vehicle_telemetry_power",
@@ -128,7 +154,7 @@ async def send_telemetry(websocket):
             }
         }))
         await asyncio.sleep(1)
-        
+
         # 发送车辆定位
         await websocket.send(json.dumps({
             "type": "vehicle_telemetry_gnss",
@@ -142,27 +168,22 @@ async def send_telemetry(websocket):
         }))
         await asyncio.sleep(1)
 
+
 # WebSocket 处理函数
 async def websocket_handler(websocket):
-    # 检查 token
     path = websocket.request.path
     token = path.split('?token=')[1] if '?token=' in path else None
     if token != TOKEN:
         await websocket.close()
         return
-    
-    # 发送认证成功消息
+
     await websocket.send(json.dumps({"code": 200, "type": "auth_success", "msg": "Success"}))
-    
-    # 启动遥测数据发送
     telemetry_task = asyncio.create_task(send_telemetry(websocket))
-    
+
     try:
         while True:
-            # 接收控制指令
             message = await websocket.recv()
             print(f"Received control command: {message}")
-            # 处理控制指令
             try:
                 command = json.loads(message)
                 if command.get('type') == 'control':
@@ -173,32 +194,30 @@ async def websocket_handler(websocket):
         telemetry_task.cancel()
         print("WebSocket connection closed")
 
+
 # HTTP 请求处理器
 class RequestHandler(http.server.BaseHTTPRequestHandler):
     def _set_cors_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-    
+
     def do_OPTIONS(self):
         self.send_response(200)
         self._set_cors_headers()
         self.end_headers()
-    
+
     def do_POST(self):
-        # 认证接口
         if self.path == "/api/auth/token":
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data)
-            
+
             if data.get("username") == AUTH_USERNAME and data.get("password") == AUTH_PASSWORD:
                 response = {
                     "code": "1",
                     "msg": "success",
-                    "data": {
-                        "token": TOKEN
-                    }
+                    "data": {"token": TOKEN}
                 }
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
@@ -206,44 +225,80 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps(response).encode('utf-8'))
             else:
-                response = {
-                    "code": "0",
-                    "msg": "invalid credentials"
-                }
+                response = {"code": "0", "msg": "invalid credentials"}
                 self.send_response(401)
                 self.send_header('Content-type', 'application/json')
                 self._set_cors_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps(response).encode('utf-8'))
-        
-        # 云台抓拍接口
+
         elif self.path == "/api/gimbal/capture":
-            # 检查 Authorization 头
             auth_header = self.headers.get('Authorization')
             if not auth_header or not auth_header.startswith('Bearer '):
                 self.send_response(401)
                 self._set_cors_headers()
                 self.end_headers()
                 return
-            
+
             token = auth_header.split(' ')[1]
             if token != TOKEN:
                 self.send_response(401)
                 self._set_cors_headers()
                 self.end_headers()
                 return
-            
-            # 生成模拟图片（1x1 像素的红色图片）
-            # 实际项目中可以返回真实图片或更复杂的模拟图片
-            img_data = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')
-            
+
+            img_data = base64.b64decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')
             self.send_response(200)
             self.send_header('Content-type', 'image/jpeg')
             self.send_header('Content-length', len(img_data))
             self._set_cors_headers()
             self.end_headers()
             self.wfile.write(img_data)
-        
+
+        elif self.path == "/api/landing/process":
+            auth_header = self.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                self.send_response(401)
+                self._set_cors_headers()
+                self.end_headers()
+                return
+
+            token = auth_header.split(' ')[1]
+            if token != TOKEN:
+                self.send_response(401)
+                self._set_cors_headers()
+                self.end_headers()
+                return
+
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data)
+
+            image_data = data.get('image')
+            if not image_data:
+                response = {"code": "0", "msg": "缺少图像数据"}
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode('utf-8'))
+                return
+
+            # 处理降落图像
+            result = auto_landing_controller.process_landing_image(image_data)
+
+            response = {
+                "code": "1",
+                "msg": "success",
+                "data": result
+            }
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self._set_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode('utf-8'))
+
         else:
             self.send_response(404)
             self._set_cors_headers()
@@ -256,6 +311,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"webman")
 
+
 # 启动 HTTP 服务器
 def start_http_server():
     PORT = 30080
@@ -264,22 +320,21 @@ def start_http_server():
         print(f"HTTP server running at http://localhost:{PORT}")
         httpd.serve_forever()
 
+
 # 启动 WebSocket 服务器
 async def start_websocket_server():
     PORT = 30081
     async with websockets.serve(websocket_handler, "", PORT):
         print(f"WebSocket server running at ws://localhost:{PORT}")
-        await asyncio.Future()  # 保持运行
+        await asyncio.Future()
+
 
 # 主函数
 async def main():
-    # 在单独的线程中启动 HTTP 服务器
-    import threading
     http_thread = threading.Thread(target=start_http_server, daemon=True)
     http_thread.start()
-    
-    # 启动 WebSocket 服务器
     await start_websocket_server()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

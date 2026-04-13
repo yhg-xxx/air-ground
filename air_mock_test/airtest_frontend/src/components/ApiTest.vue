@@ -32,9 +32,31 @@
           </div>
         </div>
         
+        <!-- 自动降落测试 -->
+        <div class="test-section">
+          <h3>3. 自动降落</h3>
+          <button @click="startAutoLanding" :disabled="!wsConnected || autoLandingActive" class="auto-landing-btn">
+            {{ autoLandingActive ? '自动降落中...' : '开始自动降落' }}
+          </button>
+          <button @click="stopAutoLanding" :disabled="!autoLandingActive" class="stop-btn">停止降落</button>
+          
+          <div v-if="landingStatus" class="landing-status">
+            <p><strong>状态:</strong> {{ landingStatus }}</p>
+            <p v-if="landingDetection"><strong>检测信息:</strong></p>
+            <ul v-if="landingDetection">
+              <li>标记ID: {{ landingDetection.marker_id }}</li>
+              <li>X偏移: {{ landingDetection.x?.toFixed(2) }}m</li>
+              <li>Y偏移: {{ landingDetection.y?.toFixed(2) }}m</li>
+              <li>高度: {{ landingDetection.height?.toFixed(2) }}m</li>
+              <li>距离: {{ landingDetection.distance?.toFixed(2) }}m</li>
+            </ul>
+            <p v-if="landingCommand"><strong>控制命令:</strong> {{ landingCommand.message }}</p>
+          </div>
+        </div>
+        
         <!-- WebSocket 测试 -->
         <div class="test-section">
-          <h3>3. WebSocket 控制</h3>
+          <h3>4. WebSocket 控制</h3>
           <button @click="connectWebSocket" :disabled="!token || loading">连接 WebSocket</button>
           <button @click="disconnectWebSocket" :disabled="!wsConnected">断开连接</button>
           
@@ -96,6 +118,13 @@ const ws = ref(null);
 const wsMessages = ref([]);
 const threeSceneRef = refElement(null);
 
+// 自动降落相关状态
+const autoLandingActive = ref(false);
+const landingStatus = ref('');
+const landingDetection = ref(null);
+const landingCommand = ref(null);
+const autoLandingInterval = ref(null);
+
 // API 配置
 const API_BASE = 'http://localhost:30080';
 const WS_BASE = 'ws://localhost:30081';
@@ -139,18 +168,17 @@ async function testCapture() {
   loading.value = true;
   error.value = '';
   try {
-    const response = await fetch(`${API_BASE}/api/gimbal/capture`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token.value}`
+    // 只使用前端捕获的无人机视角图片
+    if (threeSceneRef.value) {
+      // 捕获当前视角的图片
+      const capturedImage = threeSceneRef.value.captureImage();
+      if (capturedImage) {
+        imageData.value = capturedImage;
+      } else {
+        error.value = '获取图片失败，请确保无人机摄像头已初始化';
       }
-    });
-    
-    if (response.ok) {
-      const blob = await response.blob();
-      imageData.value = URL.createObjectURL(blob);
     } else {
-      error.value = '获取图片失败';
+      error.value = '获取图片失败，3D场景未加载';
     }
   } catch (err) {
     error.value = '获取图片失败: ' + err.message;
@@ -225,6 +253,111 @@ function sendControl(target, channel, value) {
   ws.value.send(JSON.stringify(command));
   wsMessages.value.push('发送: ' + JSON.stringify(command));
 }
+
+// 开始自动降落
+async function startAutoLanding() {
+  if (!wsConnected.value) {
+    error.value = '请先连接 WebSocket';
+    return;
+  }
+  
+  if (!token.value) {
+    error.value = '请先获取 Token';
+    return;
+  }
+  
+  autoLandingActive.value = true;
+  landingStatus.value = '启动自动降落...';
+  landingDetection.value = null;
+  landingCommand.value = null;
+  
+  // 立即执行一次降落逻辑
+  await executeLandingStep();
+  
+  // 设置定时器，每2秒执行一次降落逻辑
+  autoLandingInterval.value = setInterval(executeLandingStep, 2000);
+}
+
+// 执行降落步骤
+async function executeLandingStep() {
+  if (!autoLandingActive.value) {
+    return;
+  }
+  
+  try {
+    // 1. 从3D场景捕获图像
+    if (threeSceneRef.value) {
+      const capturedImage = threeSceneRef.value.captureImage();
+      if (!capturedImage) {
+        landingStatus.value = '图像捕获失败';
+        return;
+      }
+      
+      // 2. 发送图像到后端处理
+      landingStatus.value = '处理图像中...';
+      
+      const response = await fetch(`${API_BASE}/api/landing/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token.value}`
+        },
+        body: JSON.stringify({
+          image: capturedImage
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.code === '1' && data.data.success) {
+        // 更新检测信息
+        landingDetection.value = data.data.detection;
+        landingCommand.value = data.data.command;
+        
+        // 3. 根据返回的命令控制无人机
+        const command = data.data.command;
+        
+        if (command.action === 'land') {
+          // 执行降落
+          sendControl(command.target, command.channel, command.value);
+          landingStatus.value = '执行降落';
+          stopAutoLanding();
+        } else if (command.action === 'descend') {
+          // 降低高度
+          sendControl(command.target, command.channel, command.value);
+          landingStatus.value = command.message;
+        } else if (command.action === 'adjust') {
+          // 调整水平位置
+          if (command.commands && command.commands.length > 0) {
+            command.commands.forEach(cmd => {
+              sendControl(cmd.target, cmd.channel, cmd.value);
+            });
+            landingStatus.value = command.message;
+          }
+        } else {
+          landingStatus.value = command.message;
+        }
+      } else {
+        landingStatus.value = data.data.message || '图像处理失败';
+      }
+    } else {
+      landingStatus.value = '3D场景未加载';
+    }
+  } catch (err) {
+    error.value = '自动降落错误: ' + err.message;
+    landingStatus.value = '错误: ' + err.message;
+  }
+}
+
+// 停止自动降落
+function stopAutoLanding() {
+  if (autoLandingInterval.value) {
+    clearInterval(autoLandingInterval.value);
+    autoLandingInterval.value = null;
+  }
+  autoLandingActive.value = false;
+  landingStatus.value = '自动降落已停止';
+}
 </script>
 
 <style scoped>
@@ -270,6 +403,35 @@ button {
 button:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+.auto-landing-btn {
+  background-color: #ff9800;
+}
+
+.auto-landing-btn:disabled {
+  background-color: #cccccc;
+}
+
+.stop-btn {
+  background-color: #f44336;
+}
+
+.landing-status {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #e3f2fd;
+  border-radius: 4px;
+  border-left: 4px solid #2196f3;
+}
+
+.landing-status p {
+  margin: 5px 0;
+}
+
+.landing-status ul {
+  margin: 5px 0;
+  padding-left: 20px;
 }
 
 .result {

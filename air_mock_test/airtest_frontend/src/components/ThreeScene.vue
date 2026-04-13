@@ -18,9 +18,12 @@ import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
+// 导入ARUCO码图片
+import arucoCode from './icons/2号车.png';
+
 const container = ref(null);
 let scene, camera, aircraftCamera, renderer, controls;
-let aircraft, vehicle;
+let aircraft, vehicle, gimbal;
 let aircraftPosition = ref('(0, 0, 0)');
 let vehiclePosition = ref('(0, 0, 0)');
 let cameraMode = ref('orbit'); // orbit, follow, or camera
@@ -29,7 +32,8 @@ let cameraMode = ref('orbit'); // orbit, follow, or camera
 const telemetryData = ref({
   aircraft: {
     position: { x: 0, y: 10, z: 0 },
-    rotation: { x: 0, y: 0, z: 0 }
+    rotation: { x: 0, y: 0, z: 0 },
+    gimbal: { pitch: 0, roll: 0 }
   },
   vehicle: {
     position: { x: 0, y: 0, z: 0 },
@@ -132,13 +136,24 @@ function createAircraft() {
   const propeller2 = new THREE.Mesh(propellerGeometry, propellerMaterial);
   propeller2.position.set(-3, 0, 0);
   aircraft.add(propeller2);
+  
+  // 创建云台
+  const gimbalGeometry = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+  const gimbalMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 });
+  gimbal = new THREE.Mesh(gimbalGeometry, gimbalMaterial);
+  gimbal.position.set(0, 0, -1.5); // 位于无人机前部
+  aircraft.add(gimbal);
+  
+  // 将摄像头添加到云台上
+  aircraftCamera.position.set(0, 0, -1); // 调整摄像头位置，使其在云台前方
+  gimbal.add(aircraftCamera);
 }
 
 // 创建车辆
 function createVehicle() {
   // 车辆主体
-  const bodyGeometry = new THREE.BoxGeometry(3, 1, 5);
-  const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x0000FF }); // 蓝色
+  const bodyGeometry = new THREE.BoxGeometry(4, 1, 5); // 扩大小车宽度
+  const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF }); // 白色
   vehicle = new THREE.Mesh(bodyGeometry, bodyMaterial);
   vehicle.position.y = 0.5;
   scene.add(vehicle);
@@ -148,10 +163,10 @@ function createVehicle() {
   const wheelMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
   
   const wheels = [
-    { position: new THREE.Vector3(1, 0, 1.5) },
-    { position: new THREE.Vector3(-1, 0, 1.5) },
-    { position: new THREE.Vector3(1, 0, -1.5) },
-    { position: new THREE.Vector3(-1, 0, -1.5) }
+    { position: new THREE.Vector3(1.5, 0, 1.5) },
+    { position: new THREE.Vector3(-1.5, 0, 1.5) },
+    { position: new THREE.Vector3(1.5, 0, -1.5) },
+    { position: new THREE.Vector3(-1.5, 0, -1.5) }
   ];
   
   wheels.forEach(wheel => {
@@ -160,6 +175,31 @@ function createVehicle() {
     wheelMesh.position.copy(wheel.position);
     vehicle.add(wheelMesh);
   });
+  
+  // 添加ARUCO码到车顶上
+  const textureLoader = new THREE.TextureLoader();
+  const arucoTexture = textureLoader.load(arucoCode);
+  
+  // 设置纹理参数，确保图片正确显示为正方形
+  arucoTexture.wrapS = THREE.ClampToEdgeWrapping;
+  arucoTexture.wrapT = THREE.ClampToEdgeWrapping;
+  arucoTexture.minFilter = THREE.LinearFilter;
+  arucoTexture.magFilter = THREE.LinearFilter;
+  
+  // 创建正方形平面，确保ARUCO码是正方形
+  const arucoSize = 3.5; // 正方形大小，与扩宽后的车辆宽度匹配
+  const arucoGeometry = new THREE.PlaneGeometry(arucoSize, arucoSize);
+  const arucoMaterial = new THREE.MeshBasicMaterial({ 
+    map: arucoTexture, 
+    side: THREE.DoubleSide
+  });
+  const arucoMesh = new THREE.Mesh(arucoGeometry, arucoMaterial);
+  
+  // 放置在车顶中央，保持水平
+  arucoMesh.position.set(0, 0.6, 0);
+  arucoMesh.rotation.x = -Math.PI / 2; // 旋转-90度，使其水平
+  
+  vehicle.add(arucoMesh);
 }
 
 // 动画循环
@@ -188,14 +228,7 @@ function animate() {
   // 使用当前模式的相机进行渲染
   let currentCamera = camera;
   if (cameraMode.value === 'camera' && aircraft) {
-    // 确保飞机摄像头已添加到飞机上
-    if (!aircraft.children.includes(aircraftCamera)) {
-      aircraft.add(aircraftCamera);
-    }
     currentCamera = aircraftCamera;
-  } else if (aircraft && aircraft.children.includes(aircraftCamera)) {
-    // 从飞机上移除摄像头
-    aircraft.remove(aircraftCamera);
   }
   
   controls.update();
@@ -213,6 +246,12 @@ function updatePositions() {
     aircraft.rotation.z = telemetryData.value.aircraft.rotation.z;
     
     aircraftPosition.value = `(${telemetryData.value.aircraft.position.x.toFixed(2)}, ${telemetryData.value.aircraft.position.y.toFixed(2)}, ${telemetryData.value.aircraft.position.z.toFixed(2)})`;
+  }
+  
+  // 更新云台状态
+  if (gimbal) {
+    gimbal.rotation.x = telemetryData.value.aircraft.gimbal.pitch * Math.PI / 180; // 转换为弧度
+    gimbal.rotation.z = telemetryData.value.aircraft.gimbal.roll * Math.PI / 180; // 转换为弧度
   }
   
   if (vehicle) {
@@ -283,7 +322,36 @@ defineExpose({
       // 调整GPS坐标，将其缩放到合理范围
       telemetryData.value.vehicle.position.x = (data.data.gps[0] - 0.5687) * 1000;
       telemetryData.value.vehicle.position.z = (data.data.gps[1] - 1.3854) * 1000;
+    } else if (data.type === 'aircraft_telemetry_gimbal') {
+      // 更新云台状态
+      if (data.data.pitch !== undefined) {
+        telemetryData.value.aircraft.gimbal.pitch = data.data.pitch;
+      }
+      if (data.data.roll !== undefined) {
+        telemetryData.value.aircraft.gimbal.roll = data.data.roll;
+      }
     }
+  },
+  
+  // 捕获无人机摄像头视角的图片
+  captureImage: () => {
+    if (aircraftCamera) {
+      // 直接渲染到默认的渲染目标（DOM元素）
+      const originalCamera = cameraMode.value;
+      cameraMode.value = 'camera';
+      
+      // 强制渲染一帧
+      renderer.render(scene, aircraftCamera);
+      
+      // 将渲染结果转换为图片URL
+      const imageUrl = renderer.domElement.toDataURL('image/jpeg');
+      
+      // 恢复原来的相机模式
+      cameraMode.value = originalCamera;
+      
+      return imageUrl;
+    }
+    return null;
   }
 });
 
