@@ -336,7 +336,7 @@ if __name__ == "__main__":
     import sys
     
     # 默认参数
-    default_input = r"C:\Users\34650\Desktop\air-ground-coordination\backend\grid-1775449079133_upscaled_3.0x.png"
+    default_input = "grid-1775449079133_upscaled_3.0x.png"
     default_cols = 480
     default_rows = 1200
     
