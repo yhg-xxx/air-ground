@@ -142,9 +142,60 @@
                 <div class="control-tips small">
                   <p><strong>左摇杆：</strong>上升/下降 + 左转/右转</p>
                   <p><strong>右摇杆：</strong>前进/后退 + 左移/右移</p>
+                  <p><strong>WASD键盘：</strong>可替代左摇杆进行姿态控制</p>
+                </div>
+
+                <!-- 键盘控制 -->
+                <div class="keyboard-control-section">
+                  <h4>
+                    姿态键盘控制
+                    <el-switch
+                      v-model="keyboardControlEnabled"
+                      @change="toggleKeyboardControl"
+                      style="margin-left: 10px;"
+                    />
+                  </h4>
+                  
+                  <div v-if="keyboardControlEnabled" class="keyboard-tips">
+                    <div class="wasd-layout">
+                      <div class="wasd-row">
+                        <div class="wasd-key" :class="{ 'active': pressedKeys.has('W') }">W<span>上升</span></div>
+                      </div>
+                      <div class="wasd-row">
+                        <div class="wasd-key" :class="{ 'active': pressedKeys.has('A') }">A<span>左转</span></div>
+                        <div class="wasd-key" :class="{ 'active': pressedKeys.has('S') }">S<span>下降</span></div>
+                        <div class="wasd-key" :class="{ 'active': pressedKeys.has('D') }">D<span>右转</span></div>
+                      </div>
+                    </div>
+                    <p class="keyboard-status">
+                      状态: <span :class="keyboardControlEnabled ? 'status-enabled' : 'status-disabled'">
+                        {{ keyboardControlEnabled ? '已启用' : '已禁用' }}
+                      </span>
+                    </p>
+                  </div>
                 </div>
 
                 <h4>云台控制</h4>
+                
+                <!-- 云台灵敏度调节 -->
+                <div class="gimbal-sensitivity-section">
+                  <div class="sensitivity-label">
+                    <span>灵敏度: {{ Math.round(gimbalSensitivity * 100) }}%</span>
+                  </div>
+                  <el-slider
+                    v-model="gimbalSensitivity"
+                    :min="0.1"
+                    :max="1.0"
+                    :step="0.1"
+                    :show-tooltip="false"
+                    style="margin: 10px 0;"
+                  />
+                  <div class="sensitivity-tips">
+                    <span>低</span>
+                    <span>高</span>
+                  </div>
+                </div>
+                
                 <div class="gimbal-joystick-wrapper">
                   <VirtualJoystick
                     :size="120"
@@ -257,6 +308,14 @@ const activeControlTab = ref('vehicle')
 const capturedImage = ref(null)
 const isCapturing = ref(false)
 
+// 键盘控制状态
+const keyboardControlEnabled = ref(true)
+const pressedKeys = ref(new Set())
+const keyboardControlInterval = ref(null)
+
+// 云台控制灵敏度 (0.1-1.0，默认0.5)
+const gimbalSensitivity = ref(0.5)
+
 // GPS格式化函数
 const formatGps = (gps) => {
   if (!gps) return '无数据'
@@ -319,10 +378,12 @@ const handleAircraftControl = () => {
 const handleVehicleJoystick = (data) => {
   if (!wsConnected.value) return
   
-  // X轴控制转向：左负右正，需要反转（左转=2000, 右转=1000）
-  // Y轴控制油门：上正下负（前进=2000, 后退=1000）
-  vehicleSteering.value = 3000 - data.xValue // 反转X轴
-  vehicleThrottle.value = data.yValue
+  // 官方定义：通道1转向（左转=1000, 右转=2000）通道2油门（前进=1700, 后退=1300）
+  // X轴控制转向：左=1000, 右=2000（直接使用）
+  // Y轴控制油门：需要映射到1300-1700范围
+  vehicleSteering.value = data.xValue
+  // 将1000-2000映射到1300-1700: (value - 1000) / 1000 * 400 + 1300
+  vehicleThrottle.value = Math.round((data.yValue - 1000) / 1000 * 400 + 1300)
   
   wsManager.sendControl('vehicle', CONTROL_CHANNELS.VEHICLE_STEERING, vehicleSteering.value)
   wsManager.sendControl('vehicle', CONTROL_CHANNELS.VEHICLE_THROTTLE, vehicleThrottle.value)
@@ -358,13 +419,86 @@ const handleAircraftRightJoystick = (data) => {
 const handleGimbalJoystick = (data) => {
   if (!wsConnected.value) return
   
-  // X轴控制横滚
-  // Y轴控制俯仰
-  aircraftGimbalRoll.value = data.xValue
-  aircraftGimbalPitch.value = data.yValue
+  // 应用灵敏度调整
+  // 计算相对于中心位置(1500)的偏移量，然后应用灵敏度
+  const centerValue = 1500
+  const rollOffset = (data.xValue - centerValue) * gimbalSensitivity.value
+  const pitchOffset = (data.yValue - centerValue) * gimbalSensitivity.value
+  
+  // 计算最终控制值，确保在有效范围内
+  aircraftGimbalRoll.value = Math.max(1000, Math.min(2000, centerValue + rollOffset))
+  aircraftGimbalPitch.value = Math.max(1000, Math.min(2000, centerValue + pitchOffset))
   
   wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_GIMBAL_PITCH, aircraftGimbalPitch.value)
   wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_GIMBAL_ROLL, aircraftGimbalRoll.value)
+}
+
+// 键盘事件处理
+const handleKeyDown = (event) => {
+  if (!keyboardControlEnabled.value || !wsConnected.value) return
+  
+  const key = event.key.toUpperCase()
+  if (['W', 'A', 'S', 'D'].includes(key)) {
+    event.preventDefault()
+    pressedKeys.value.add(key)
+    updateAircraftControlFromKeyboard()
+  }
+}
+
+const handleKeyUp = (event) => {
+  if (!keyboardControlEnabled.value) return
+  
+  const key = event.key.toUpperCase()
+  if (['W', 'A', 'S', 'D'].includes(key)) {
+    event.preventDefault()
+    pressedKeys.value.delete(key)
+    updateAircraftControlFromKeyboard()
+  }
+}
+
+// 根据键盘输入更新无人机姿态控制
+const updateAircraftControlFromKeyboard = () => {
+  if (!wsConnected.value) return
+  
+  // 重置姿态控制值到中位
+  let newAltitude = 1500   // 上升下降
+  let newDirection = 1500  // 左转右转
+  
+  // 根据按键状态设置姿态控制值
+  if (pressedKeys.value.has('W')) {
+    newAltitude = 2000  // 上升
+  } else if (pressedKeys.value.has('S')) {
+    newAltitude = 1000  // 下降
+  }
+  
+  if (pressedKeys.value.has('A')) {
+    newDirection = 1000  // 左转
+  } else if (pressedKeys.value.has('D')) {
+    newDirection = 2000  // 右转
+  }
+  
+  // 更新姿态控制值并发送指令
+  aircraftAltitude.value = newAltitude
+  aircraftDirection.value = newDirection
+  
+  wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_ALTITUDE, aircraftAltitude.value)
+  wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_DIRECTION, aircraftDirection.value)
+}
+
+// 切换键盘控制模式
+const toggleKeyboardControl = () => {
+  keyboardControlEnabled.value = !keyboardControlEnabled.value
+  if (!keyboardControlEnabled.value) {
+    // 关闭键盘控制时，重置按键状态和姿态控制
+    pressedKeys.value.clear()
+    aircraftAltitude.value = 1500   // 重置上升下降
+    aircraftDirection.value = 1500  // 重置左转右转
+    if (wsConnected.value) {
+      wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_ALTITUDE, aircraftAltitude.value)
+      wsManager.sendControl('aircraft', CONTROL_CHANNELS.AIRCRAFT_DIRECTION, aircraftDirection.value)
+    }
+  }
+  ElMessage.info(`键盘姿态控制${keyboardControlEnabled.value ? '已开启' : '已关闭'}`)
 }
 
 // 发送无人机命令
@@ -486,6 +620,10 @@ onMounted(() => {
     telemetryData.value.vehicle = data
   })
   
+  // 添加键盘事件监听器
+  document.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('keyup', handleKeyUp)
+  
   // 自动连接WebSocket
   connectWebSocket()
 })
@@ -495,6 +633,13 @@ onUnmounted(() => {
   wsManager.disconnect()
   // 清理图像资源
   clearImage()
+  // 清理键盘事件监听器
+  document.removeEventListener('keydown', handleKeyDown)
+  document.removeEventListener('keyup', handleKeyUp)
+  // 清理定时器
+  if (keyboardControlInterval.value) {
+    clearInterval(keyboardControlInterval.value)
+  }
 })
 </script>
 
@@ -665,6 +810,118 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.keyboard-control-section {
+  margin: 20px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+}
+
+.keyboard-control-section h4 {
+  margin: 0 0 15px 0;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.keyboard-tips {
+  margin-top: 10px;
+}
+
+.wasd-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+
+.wasd-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wasd-key {
+  width: 50px;
+  height: 50px;
+  border: 2px solid #d4dae4;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  font-weight: bold;
+  font-size: 14px;
+  color: #606266;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.wasd-key span {
+  font-size: 10px;
+  font-weight: normal;
+  margin-top: 2px;
+  color: #909399;
+}
+
+.wasd-key.active {
+  background: #409eff;
+  color: white;
+  border-color: #337ecc;
+  transform: scale(0.95);
+  box-shadow: 0 2px 4px rgba(64, 158, 255, 0.3);
+}
+
+.wasd-key.active span {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.keyboard-status {
+  margin: 10px 0 0 0;
+  font-size: 12px;
+  color: #606266;
+  text-align: center;
+}
+
+.status-enabled {
+  color: #67c23a;
+  font-weight: 500;
+}
+
+.status-disabled {
+  color: #f56c6c;
+  font-weight: 500;
+}
+
+/* 云台灵敏度调节样式 */
+.gimbal-sensitivity-section {
+  margin: 15px 0;
+  padding: 12px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid #e4e7ed;
+}
+
+.sensitivity-label {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.sensitivity-tips {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+}
+
 /* 响应式调整 */
 @media screen and (max-width: 1200px) {
   .el-col {
@@ -674,6 +931,16 @@ onUnmounted(() => {
   .el-col:first-child,
   .el-col:last-child {
     margin-bottom: 0;
+  }
+  
+  .wasd-key {
+    width: 40px;
+    height: 40px;
+    font-size: 12px;
+  }
+  
+  .wasd-key span {
+    font-size: 8px;
   }
 }
 </style>

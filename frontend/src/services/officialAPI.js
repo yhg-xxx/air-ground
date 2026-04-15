@@ -30,6 +30,8 @@ export const officialServerAPI = {
       const response = await officialAPI.post('/auth/token', {
         username: USERNAME,
         password: PASSWORD
+      }, {
+        timeout: 30000  // Token请求给30秒超时
       })
       if (response.data.code === "1") {
         return response.data.data.token
@@ -103,6 +105,8 @@ export class WebSocketManager {
     this.isConnected = false
     this.token = null
     this.reconnectTimer = null
+    this.reconnectAttempts = 0
+    this.maxReconnectAttempts = 5
     this.messageHandlers = new Map()
 
     this.telemetryData = {
@@ -120,14 +124,15 @@ export class WebSocketManager {
       }
       
       this.token = token
-      // 使用相对路径的WebSocket连接，通过vite代理
-      const wsUrl = `ws://localhost:5174/ws?token=${token}`
+      // 使用当前页面的host，通过vite代理
+      const wsUrl = `ws://${window.location.host}/ws?token=${token}`
       console.log('正在连接WebSocket:', wsUrl)
       this.ws = new WebSocket(wsUrl)
 
       this.ws.onopen = () => {
         console.log('WebSocket连接成功')
         this.isConnected = true
+        this.reconnectAttempts = 0  // 连接成功，重置重连次数
         this.emit('connected')
       }
 
@@ -241,12 +246,18 @@ export class WebSocketManager {
     }
   }
 
-  // 自动重连
+  // 自动重连（限制最大次数）
   autoReconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.warn(`WebSocket重连已达上限(${this.maxReconnectAttempts}次)，停止重连`)
+      return
+    }
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectAttempts++
+    console.log(`WebSocket重连中... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
     this.reconnectTimer = setTimeout(() => {
       if (this.token) this.connect(this.token)
-    }, 2000)
+    }, 3000)
   }
 
   // 断开连接
@@ -260,12 +271,12 @@ export class WebSocketManager {
   }
 }
 
-// 官方通道定义（100% 匹配文档）
-// 车辆：通道1=转向（左转2000,右转1000） 通道2=油门（前进2000,后退1000）
+// 官方通道定义（100% 匹配实际代码 demo_ws_client.py）
+// 车辆：通道1=转向（左转1000,右转2000） 通道2=油门（前进1700,后退1300）
 export const CONTROL_CHANNELS = {
-  // 车辆通道
-  VEHICLE_STEERING: 1,     // 转向：左转=2000, 中=1500, 右转=1000
-  VEHICLE_THROTTLE: 2,     // 油门：前进=2000, 中=1500, 后退=1000
+  // 车辆通道（匹配demo实际使用值）
+  VEHICLE_STEERING: 1,     // 转向：左转=1000, 中=1500, 右转=2000  
+  VEHICLE_THROTTLE: 2,     // 油门：前进=1700, 中=1500, 后退=1300
 
   // 无人机通道
   AIRCRAFT_DIRECTION: 1,     // 左转右转
