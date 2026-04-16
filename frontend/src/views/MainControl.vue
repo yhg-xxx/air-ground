@@ -203,7 +203,7 @@
                     bottomLabel="下俯"
                     leftLabel="左滚"
                     rightLabel="右滚"
-                    :autoCenter="false"
+                    :autoCenter="true"
                     @change="handleGimbalJoystick"
                   />
                 </div>
