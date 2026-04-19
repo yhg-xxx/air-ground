@@ -188,6 +188,21 @@
                     />
                   </div>
                 </div>
+<<<<<<< HEAD
+=======
+                
+                <div class="gimbal-joystick-wrapper">
+                  <VirtualJoystick
+                    :size="120"
+                    topLabel="上仰"
+                    bottomLabel="下俯"
+                    leftLabel="左滚"
+                    rightLabel="右滚"
+                    :autoCenter="true"
+                    @change="handleGimbalJoystick"
+                  />
+                </div>
+>>>>>>> af5652457d7df8440f9f550df66f2f103f1b09f0
 
                 <div class="drone-buttons compact">
                   <el-button type="primary" size="small" @click="sendDroneCommand('takeoff')">

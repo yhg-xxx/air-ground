@@ -8,13 +8,12 @@ import json
 import cv2
 import matplotlib.pyplot as plt
 import matplotlib
-from pathlib import Path
 
 # 配置中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
 matplotlib.rcParams['axes.unicode_minus'] = False
-from collections import deque
 import heapq
+from scipy import interpolate
 
 
 class PathPlanner:
@@ -74,6 +73,9 @@ class PathPlanner:
         gates = self._sort_gates_by_path_order(gates)
         self.gates = gates  # 保存拱门信息用于可视化
         
+        # 构建拱门阻挡掩码
+        self.build_gate_mask()
+        
         if len(gates) >= 2:
             start = gates[0]['center']   # 下边的门（起点）
             end = gates[-1]['center']    # 上边的门（终点）
@@ -85,6 +87,23 @@ class PathPlanner:
             start = (self.cols // 2, self.rows - 10)  # 下边中间
             end = (self.cols // 2, 10)                # 上边中间
             return start, end
+    
+    def build_gate_mask(self):
+        """预计算拱门阻挡掩码，用于快速判断坐标是否在拱门膨胀区域内"""
+        self.gate_mask = np.zeros((self.rows, self.cols), dtype=bool)
+        if not hasattr(self, 'gates') or not self.gates:
+            return
+        expansion = 2
+        # 只处理拱门1和拱门9（第一个和最后一个）
+        for i, gate in enumerate(self.gates):
+            if i == 0 or i == len(self.gates) - 1:  # 只处理第一个和最后一个拱门
+                cx, cy = gate['center']
+                gw, gh = gate['width'], gate['height']
+                x1 = max(0, int(cx - gw/2 - expansion))
+                x2 = min(self.cols, int(cx + gw/2 + expansion))
+                y1 = max(0, int(cy - gh/2 - expansion))
+                y2 = min(self.rows, int(cy + gh/2 + expansion))
+                self.gate_mask[y1:y2, x1:x2] = True
     
     def _sort_gates_by_path_order(self, gates):
         """按照实际走迷宫的路径顺序排序拱门"""
@@ -141,13 +160,27 @@ class PathPlanner:
         def get_neighbors(pos):
             x, y = pos
             neighbors = []
-            # 8方向移动
-            for dx, dy in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+            # 16方向移动
+            for dx, dy in [(-1,-1), (-1,0), (0,-1), (1,-1), (1,0) ]:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < self.cols and 0 <= ny < self.rows:
                     if self.grid[ny, nx] == 0:  # 可通行
-                        # 对角线移动的代价更高
-                        cost = 1.414 if dx != 0 and dy != 0 else 1.0
+                        # 使用预计算的拱门阻挡掩码进行O(1)检查
+                        if hasattr(self, 'gate_mask') and self.gate_mask[ny, nx]:
+                            continue  # 在拱门区域内，禁止通行
+                        # 计算实际欧氏距离作为移动代价
+                        cost = np.sqrt(dx**2 + dy**2)
+                        # 计算障碍物惩罚项（增强版）
+                        obstacle_penalty = 0
+                        # 检查周围8个方向的障碍物
+                        for dx2, dy2 in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+                            ox, oy = nx + dx2, ny + dy2
+                            if 0 <= ox < self.cols and 0 <= oy < self.rows:
+                                if self.grid[oy, ox] == 1:
+                                    # 直接惩罚，不计算距离
+                                    obstacle_penalty += 1.0
+                        # 添加障碍物惩罚
+                        cost += obstacle_penalty * 0.8  # 增加惩罚系数
                         neighbors.append(((nx, ny), cost))
             return neighbors
         
@@ -477,6 +510,50 @@ class PathPlanner:
         plt.close()
         print(f"飞行路径图已保存: {output_path}")
     
+    def smooth_path(self, path):
+        """使用三次样条插值平滑路径"""
+        if not path or len(path) < 3:
+            return path
+        
+        # 提取路径坐标
+        x = [p[0] for p in path]
+        y = [p[1] for p in path]
+        
+        # 创建参数t，基于路径点之间的距离
+        t = [0]
+        for i in range(1, len(path)):
+            dist = np.sqrt((x[i] - x[i-1])**2 + (y[i] - y[i-1])**2)
+            t.append(t[-1] + dist)
+        t = np.array(t)
+        
+        # 使用三次样条插值，增加平滑参数s
+        s = len(path) * 0.15  # 平滑参数，越大越平滑
+        tck_x = interpolate.splrep(t, x, s=s)
+        tck_y = interpolate.splrep(t, y, s=s)
+        
+        # 生成更密集的点
+        t_new = np.linspace(0, t[-1], int(len(path) * 2.5))
+        x_new = interpolate.splev(t_new, tck_x)
+        y_new = interpolate.splev(t_new, tck_y)
+        
+        # 转换为整数坐标并去重
+        smooth_path = []
+        seen = set()
+        for i in range(len(x_new)):
+            px = int(round(x_new[i]))
+            py = int(round(y_new[i]))
+            if (px, py) not in seen:
+                smooth_path.append((px, py))
+                seen.add((px, py))
+        
+        # 确保起点和终点在平滑路径中
+        if smooth_path[0] != path[0]:
+            smooth_path.insert(0, path[0])
+        if smooth_path[-1] != path[-1]:
+            smooth_path.append(path[-1])
+        
+        return smooth_path
+    
     def find_shortest_path(self, original_image_path: str, manual_start=None, manual_end=None):
         """主函数：找出最短路径"""
         print("=" * 60)
@@ -512,31 +589,42 @@ class PathPlanner:
         print("开始A*算法寻路...")
         path = self.a_star(start, end)
         
+        # 3. 路径平滑处理
+        smooth_path = None
         if path:
             print(f"找到路径！总步数: {len(path)}")
             real_length = self.calculate_path_length(path)
             print(f"路径实际长度: {real_length:.2f} 米")
+            
+            # 平滑路径
+            smooth_path = self.smooth_path(path)
+            smooth_length = self.calculate_path_length(smooth_path)
+            print(f"平滑后路径步数: {len(smooth_path)}")
+            print(f"平滑后路径长度: {smooth_length:.2f} 米")
         else:
             print("未找到可行路径！")
             
-        # 3. 可视化
-        self.visualize_path(start, end, path)
+        # 4. 可视化
+        self.visualize_path(start, end, smooth_path or path)
         
-        # 4. 保存路径数据
+        # 5. 保存路径数据
         if path:
             path_data = {
                 "start": start,
                 "end": end,
                 "path": path,
+                "smooth_path": smooth_path,
                 "length_steps": len(path),
-                "length_meters": self.calculate_path_length(path)
+                "smooth_length_steps": len(smooth_path) if smooth_path else 0,
+                "length_meters": self.calculate_path_length(path),
+                "smooth_length_meters": self.calculate_path_length(smooth_path) if smooth_path else 0
             }
             
             with open("output/path_data.json", 'w') as f:
                 json.dump(path_data, f, indent=2)
             print("路径数据已保存: output/path_data.json")
         
-        return path
+        return smooth_path or path
 
 
 if __name__ == "__main__":
