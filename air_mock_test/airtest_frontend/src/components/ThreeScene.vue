@@ -1,6 +1,12 @@
 <template>
   <div class="three-scene">
-    <div ref="container" class="scene-container"></div>
+    <div class="scene-top">
+      <div class="camera-sidebar">
+        <div ref="vehicleCameraContainer" class="vehicle-camera-container"></div>
+        <div ref="aircraftCameraContainer" class="aircraft-camera-container"></div>
+      </div>
+      <div ref="container" class="scene-container"></div>
+    </div>
     <div class="scene-controls">
       <h3>3D 场景控制</h3>
       <div class="control-buttons">
@@ -9,8 +15,8 @@
       </div>
       <div class="control-instructions">
         <h4>遥感操作：</h4>
-        <p><strong>无人机：</strong>WASD移动 | QE升降 | ←→转向 | IJKL云台</p>
-        <p><strong>车辆：</strong>TF前后 | GH转向</p>
+        <p><strong>无人机：</strong>WS前进后退 | AD左转右转 | IK升降 | QE云台俯仰</p>
+        <p><strong>车辆：</strong>↑↓前后 | ←→转向</p>
       </div>
       <div class="status">
         <p>无人机位置: {{ aircraftPosition }}</p>
@@ -29,10 +35,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import arucoCode from './icons/2号车.png';
 
 // 导入迷宫模块
-import { createLeftMaze } from './Maze.js';
+import { createLeftMaze, checkCollision, getCollisionBoxCount } from './Maze.js';
 
 const container = ref(null);
-let scene, camera, aircraftCamera, renderer, controls;
+const vehicleCameraContainer = ref(null);
+const aircraftCameraContainer = ref(null);
+let scene, camera, aircraftCamera, vehicleCamera, renderer, vehicleRenderer, aircraftRenderer, controls;
 let aircraft, vehicle, gimbal;
 let aircraftPosition = ref('(0, 0, 0)');
 let vehiclePosition = ref('(0, 0, 0)');
@@ -53,12 +61,12 @@ const CONTROL_CONFIG = {
 // 遥测数据
 const telemetryData = ref({
   aircraft: {
-    position: { x: 0, y: 2, z: 0 },
+    position: { x: 8.546, y: 1.050, z: 16.756 },
     rotation: { x: 0, y: 0, z: 0 },
     gimbal: { pitch: 0, roll: 0 }
   },
   vehicle: {
-    position: { x: 0, y: 0, z: 0 },
+    position: { x: 8.546, y: 0.05, z: 16.756 },
     rotation: { x: 0, y: 0, z: 0 }
   }
 });
@@ -69,14 +77,19 @@ function initScene() {
   scene.background = new THREE.Color(0x87CEEB);
 
   // 主相机
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera = new THREE.PerspectiveCamera(75, container.value.clientWidth / container.value.clientHeight, 0.1, 100);
   camera.position.set(0, 15, 10);
   camera.lookAt(0, 0, 0);
 
   // 无人机第一视角相机
-  aircraftCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50);
+  aircraftCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 50);
   aircraftCamera.position.set(0, 0.1, -0.5);
   aircraftCamera.lookAt(0, 0, -5);
+
+  // 小车第一视角相机
+  vehicleCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 50);
+  vehicleCamera.position.set(0, 0.2, 0.3);
+  vehicleCamera.lookAt(0, 0.2, 5);
 
   // 渲染器
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -84,6 +97,20 @@ function initScene() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.value.appendChild(renderer.domElement);
+
+  // 小车视角渲染器
+  vehicleRenderer = new THREE.WebGLRenderer({ antialias: true });
+  vehicleRenderer.setSize(200, 200);
+  vehicleRenderer.shadowMap.enabled = true;
+  vehicleRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  vehicleCameraContainer.value.appendChild(vehicleRenderer.domElement);
+
+  // 无人机视角渲染器
+  aircraftRenderer = new THREE.WebGLRenderer({ antialias: true });
+  aircraftRenderer.setSize(200, 200);
+  aircraftRenderer.shadowMap.enabled = true;
+  aircraftRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  aircraftCameraContainer.value.appendChild(aircraftRenderer.domElement);
 
   // 轨道控制器
   controls = new OrbitControls(camera, renderer.domElement);
@@ -121,6 +148,7 @@ function initScene() {
 
   // 创建迷宫
   createLeftMaze(scene);
+  console.log('碰撞体数量:', getCollisionBoxCount());
 
   // 创建模型
   createAircraft();
@@ -138,6 +166,10 @@ function initScene() {
 // ====================== 键盘事件处理 ======================
 function onKeyDown(e) {
   keys.value[e.key.toLowerCase()] = true;
+  // 阻止方向键的默认滚动行为
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+  }
 }
 
 function onKeyUp(e) {
@@ -153,69 +185,69 @@ function handleRemoteControl() {
   // --- 无人机控制 ---
   const yawRad = ac.rotation.y * Math.PI / 180;
 
-  // 前后左右 (WASD) - 相对于机头方向
+  // 前进后退 (WS) - 相对于机头方向
   if (keys.value['w']) {
-    ac.position.x -= Math.sin(yawRad) * cfg.aircraftMoveSpeed;
-    ac.position.z -= Math.cos(yawRad) * cfg.aircraftMoveSpeed;
+    const newX = ac.position.x - Math.sin(yawRad) * cfg.aircraftMoveSpeed;
+    const newZ = ac.position.z - Math.cos(yawRad) * cfg.aircraftMoveSpeed;
+    if (!checkCollision(newX, ac.position.y, newZ, 0.15)) {
+      ac.position.x = newX;
+      ac.position.z = newZ;
+    }
   }
   if (keys.value['s']) {
-    ac.position.x += Math.sin(yawRad) * cfg.aircraftMoveSpeed;
-    ac.position.z += Math.cos(yawRad) * cfg.aircraftMoveSpeed;
-  }
-  if (keys.value['a']) {
-    ac.position.x -= Math.cos(yawRad) * cfg.aircraftMoveSpeed;
-    ac.position.z += Math.sin(yawRad) * cfg.aircraftMoveSpeed;
-  }
-  if (keys.value['d']) {
-    ac.position.x += Math.cos(yawRad) * cfg.aircraftMoveSpeed;
-    ac.position.z -= Math.sin(yawRad) * cfg.aircraftMoveSpeed;
+    const newX = ac.position.x + Math.sin(yawRad) * cfg.aircraftMoveSpeed;
+    const newZ = ac.position.z + Math.cos(yawRad) * cfg.aircraftMoveSpeed;
+    if (!checkCollision(newX, ac.position.y, newZ, 0.15)) {
+      ac.position.x = newX;
+      ac.position.z = newZ;
+    }
   }
 
-  // 升降 (QE)
-  if (keys.value['q']) ac.position.y += cfg.aircraftMoveSpeed;
-  if (keys.value['e']) {
+  // 左转右转 (AD)
+  if (keys.value['a']) ac.rotation.y += cfg.aircraftRotateSpeed * (180/Math.PI);
+  if (keys.value['d']) ac.rotation.y -= cfg.aircraftRotateSpeed * (180/Math.PI);
+
+  // 升降 (IK)
+  if (keys.value['i']) ac.position.y += cfg.aircraftMoveSpeed;
+  if (keys.value['k']) {
     ac.position.y -= cfg.aircraftMoveSpeed;
     if (ac.position.y < 0.2) ac.position.y = 0.2; // 防撞地
   }
 
-  // 转向 (左右箭头)
-  if (keys.value['arrowleft']) ac.rotation.y += cfg.aircraftRotateSpeed * (180/Math.PI);
-  if (keys.value['arrowright']) ac.rotation.y -= cfg.aircraftRotateSpeed * (180/Math.PI);
-
-  // 云台控制 (IJKL)
-  if (keys.value['i']) {
+  // 云台俯仰 (QE)
+  if (keys.value['q']) {
     ac.gimbal.pitch -= cfg.aircraftGimbalSpeed * (180/Math.PI);
     if (ac.gimbal.pitch < -90) ac.gimbal.pitch = -90;
   }
-  if (keys.value['k']) {
+  if (keys.value['e']) {
     ac.gimbal.pitch += cfg.aircraftGimbalSpeed * (180/Math.PI);
     if (ac.gimbal.pitch > 90) ac.gimbal.pitch = 90;
-  }
-  if (keys.value['j']) {
-    ac.gimbal.roll -= cfg.aircraftGimbalSpeed * (180/Math.PI);
-    if (ac.gimbal.roll < -45) ac.gimbal.roll = -45;
-  }
-  if (keys.value['l']) {
-    ac.gimbal.roll += cfg.aircraftGimbalSpeed * (180/Math.PI);
-    if (ac.gimbal.roll > 45) ac.gimbal.roll = 45;
   }
 
   // --- 车辆控制 ---
   const vYawRad = vc.rotation.y * Math.PI / 180;
 
-  // 前后 (TF)
-  if (keys.value['t']) {
-    vc.position.x -= Math.sin(vYawRad) * cfg.vehicleMoveSpeed;
-    vc.position.z -= Math.cos(vYawRad) * cfg.vehicleMoveSpeed;
+  // 前后 (方向键上下) - 相对于车头方向
+  if (keys.value['arrowup']) {
+    const newX = vc.position.x + Math.sin(vYawRad) * cfg.vehicleMoveSpeed;
+    const newZ = vc.position.z + Math.cos(vYawRad) * cfg.vehicleMoveSpeed;
+    if (!checkCollision(newX, vc.position.y, newZ, 0.25, 0.15)) {
+      vc.position.x = newX;
+      vc.position.z = newZ;
+    }
   }
-  if (keys.value['f']) {
-    vc.position.x += Math.sin(vYawRad) * cfg.vehicleMoveSpeed;
-    vc.position.z += Math.cos(vYawRad) * cfg.vehicleMoveSpeed;
+  if (keys.value['arrowdown']) {
+    const newX = vc.position.x - Math.sin(vYawRad) * cfg.vehicleMoveSpeed;
+    const newZ = vc.position.z - Math.cos(vYawRad) * cfg.vehicleMoveSpeed;
+    if (!checkCollision(newX, vc.position.y, newZ, 0.25, 0.15)) {
+      vc.position.x = newX;
+      vc.position.z = newZ;
+    }
   }
 
-  // 转向 (GH)
-  if (keys.value['g']) vc.rotation.y += cfg.vehicleRotateSpeed * (180/Math.PI);
-  if (keys.value['h']) vc.rotation.y -= cfg.vehicleRotateSpeed * (180/Math.PI);
+  // 转向 (方向键左右)
+  if (keys.value['arrowleft']) vc.rotation.y += cfg.vehicleRotateSpeed * (180/Math.PI);
+  if (keys.value['arrowright']) vc.rotation.y -= cfg.vehicleRotateSpeed * (180/Math.PI);
 }
 
 // ====================== 模型创建函数 ======================
@@ -274,6 +306,9 @@ function createVehicle() {
   aruco.position.set(0, 0.06, 0);
   aruco.rotation.x = -Math.PI / 2;
   vehicle.add(aruco);
+
+  // 添加小车相机
+  vehicle.add(vehicleCamera);
 }
 
 // ====================== 动画与控制 ======================
@@ -304,6 +339,16 @@ function animate() {
 
   controls.update();
   renderer.render(scene, currentCamera);
+
+  // 渲染小车视角
+  if (vehicleRenderer && vehicleCamera) {
+    vehicleRenderer.render(scene, vehicleCamera);
+  }
+
+  // 渲染无人机视角
+  if (aircraftRenderer && aircraftCamera) {
+    aircraftRenderer.render(scene, aircraftCamera);
+  }
 }
 
 function updatePositions() {
@@ -332,29 +377,23 @@ function updatePositions() {
 function onWindowResize() {
   camera.aspect = container.value.clientWidth / container.value.clientHeight;
   camera.updateProjectionMatrix();
-  aircraftCamera.aspect = container.value.clientWidth / container.value.clientHeight;
-  aircraftCamera.updateProjectionMatrix();
   renderer.setSize(container.value.clientWidth, container.value.clientHeight);
-}
-
-function toggleCamera() {
-  const modes = ['orbit', 'follow', 'camera'];
-  const currentIndex = modes.indexOf(cameraMode.value);
-  cameraMode.value = modes[(currentIndex + 1) % modes.length];
-  if (cameraMode.value === 'orbit') {
-    camera.position.set(0, 15, 10);
-    camera.lookAt(0, 0, 0);
+  if (vehicleRenderer) {
+    vehicleRenderer.setSize(200, 200);
+  }
+  if (aircraftRenderer) {
+    aircraftRenderer.setSize(200, 200);
   }
 }
 
 function resetScene() {
   telemetryData.value = {
-    aircraft: { position: { x: 0, y: 2, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, gimbal: { pitch: 0, roll: 0 } },
-    vehicle: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 } }
+    aircraft: { position: { x: 8.546, y: 1.050, z: 16.756 }, rotation: { x: 0, y: 0, z: 0 }, gimbal: { pitch: 0, roll: 0 } },
+    vehicle: { position: { x: 8.546, y: 0.05, z: 16.756 }, rotation: { x: 0, y: 0, z: 0 } }
   };
   if (cameraMode.value === 'orbit') {
-    camera.position.set(0, 15, 10);
-    camera.lookAt(0, 0, 0);
+    camera.position.set(8.546, 15, 18.756);
+    camera.lookAt(8.546, 0, 16.756);
   }
 }
 
@@ -400,7 +439,14 @@ onUnmounted(() => {
   if (renderer) {
     renderer.dispose();
   }
+  if (vehicleRenderer) {
+    vehicleRenderer.dispose();
+  }
+  if (aircraftRenderer) {
+    aircraftRenderer.dispose();
+  }
 });
+
 </script>
 
 <style scoped>
@@ -411,11 +457,43 @@ onUnmounted(() => {
   margin: 20px 0;
 }
 
+.scene-top {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  gap: 10px;
+  min-height: 0;
+}
+
+.camera-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.vehicle-camera-container {
+  width: 200px;
+  height: 200px;
+  border: 2px solid #4CAF50;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.aircraft-camera-container {
+  width: 200px;
+  height: 200px;
+  border: 2px solid #FF4500;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .scene-container {
   flex: 1;
   border: 1px solid #ddd;
   border-radius: 8px;
   overflow: hidden;
+  min-width: 0;
 }
 
 .scene-controls {

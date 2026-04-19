@@ -16,6 +16,9 @@ const MAZE_CONFIG = {
   offsetZ: -25
 };
 
+// 碰撞体数组
+let collisionBoxes = [];
+
 // ====================== 迷宫生成函数 ======================
 function createLeftMaze(scene) {
   const mazeGroup = new THREE.Group();
@@ -24,6 +27,9 @@ function createLeftMaze(scene) {
   const wallMaterial = new THREE.MeshLambertMaterial({ color: 0xff3333 });
   const stripeMaterial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
   const archMaterial = new THREE.MeshLambertMaterial({ color: 0x0066ff, transparent: true, opacity: 0.8 });
+
+  // 清空之前的碰撞体
+  collisionBoxes = [];
 
   createMazeBoundary(mazeGroup, wallMaterial, stripeMaterial);
   createInnerWalls(mazeGroup, wallMaterial, stripeMaterial);
@@ -157,6 +163,16 @@ function createWall(group, mainMat, stripeMat, x, y, z, width, height, depth) {
   wall.receiveShadow = true;
   group.add(wall);
 
+  // 添加碰撞体
+  collisionBoxes.push({
+    minX: x - width/2,
+    maxX: x + width/2,
+    minY: 0,
+    maxY: height,
+    minZ: z - depth/2,
+    maxZ: z + depth/2
+  });
+
   const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(width, 0.1, depth + 0.01), stripeMat);
   stripe1.position.set(x, y + height*0.3, z);
   stripe1.castShadow = true;
@@ -173,7 +189,41 @@ function createArchPillar(group, mat, x, z) {
   pillar.position.set(x, MAZE_CONFIG.archHeight/2, z);
   pillar.castShadow = true;
   group.add(pillar);
+
+  // 添加柱子碰撞体
+  collisionBoxes.push({
+    minX: x - 0.075,
+    maxX: x + 0.075,
+    minY: 0,
+    maxY: MAZE_CONFIG.archHeight,
+    minZ: z - 0.075,
+    maxZ: z + 0.075
+  });
 }
 
-// 暴露创建迷宫的函数
-export { createLeftMaze };
+// 暴露创建迷宫的函数和碰撞检测
+export { createLeftMaze, collisionBoxes };
+
+// 获取碰撞体数量（用于调试）
+function getCollisionBoxCount() {
+  return collisionBoxes.length;
+}
+
+export { getCollisionBoxCount };
+
+// 碰撞检测函数（检测整个边界框）
+function checkCollision(x, y, z, radius = 0.2, height = 0.1) {
+  for (const box of collisionBoxes) {
+    // 检查 X 轴
+    if (x + radius > box.minX && x - radius < box.maxX &&
+        // 检查 Y 轴（高度范围）
+        y + height > box.minY && y < box.maxY &&
+        // 检查 Z 轴
+        z + radius > box.minZ && z - radius < box.maxZ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export { checkCollision };
