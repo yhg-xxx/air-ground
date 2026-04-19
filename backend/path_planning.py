@@ -262,9 +262,220 @@ class PathPlanner:
             distance = np.sqrt((x2-x1)**2 + (y2-y1)**2)
             total_length += distance
         
-        # 转换为实际长度（假设每格0.167米）
-        real_length = total_length * (1/6)
-        return real_length
+        # 场地尺寸：左边黑墙44米(1129格)，下边黑墙17米(425格)
+        METERS_PER_GRID_X = 17.0 / 425.0   # X方向：0.04米/格
+        METERS_PER_GRID_Y = 44.0 / 1129.0  # Y方向：0.039米/格
+        
+        total_length = 0
+        for i in range(1, len(path)):
+            x1, y1 = path[i-1]
+            x2, y2 = path[i]
+            dx = (x2 - x1) * METERS_PER_GRID_X
+            dy = (y2 - y1) * METERS_PER_GRID_Y
+            distance = np.sqrt(dx**2 + dy**2)
+            total_length += distance
+        
+        return total_length
+    
+    def find_drone_flight_path(self, original_image_path: str, start_point=None, end_point=None):
+        """
+        无人机直飞路径规划
+        从起点直接起飞，按顺序穿过拱门1-8的中心点，然后飞到终点
+        无人机飞行不受地面障碍物限制，采用直线连接
+        """
+        print("=" * 60)
+        print("无人机直飞路径规划")
+        print("=" * 60)
+        
+        # 1. 检测所有拱门
+        self.find_gates(original_image_path)
+        
+        if not hasattr(self, 'gates') or len(self.gates) < 8:
+            print(f"警告: 只检测到 {len(self.gates) if hasattr(self, 'gates') else 0} 个拱门，需要至少8个")
+            return None
+        
+        # 2. 获取起点和终点
+        if start_point is None:
+            start_point = (350, 945)  # 默认起点
+        if end_point is None:
+            end_point = (350, 105)    # 默认终点
+        
+        print(f"起点: {start_point}")
+        print(f"终点: {end_point}")
+        
+        # 3. 构建飞行路径：起点 -> 拱门1-8中心 -> 终点
+        flight_waypoints = [start_point]
+        
+        # 拱门1-8的中心点（不包括拱门9）
+        for i in range(min(8, len(self.gates))):
+            gate_center = self.gates[i]['center']
+            flight_waypoints.append(gate_center)
+            print(f"拱门{i+1}中心: {gate_center}")
+        
+        flight_waypoints.append(end_point)
+        
+        print(f"\n飞行路径点数: {len(flight_waypoints)}")
+        
+        # 4. 计算每段距离和总距离
+        segment_distances = []
+        total_distance = 0
+        
+        print("\n各段距离:")
+        segment_distances_m = []  # 实际距离（米）
+        for i in range(1, len(flight_waypoints)):
+            x1, y1 = flight_waypoints[i-1]
+            x2, y2 = flight_waypoints[i]
+            dist = np.sqrt((x2-x1)**2 + (y2-y1)**2)
+            segment_distances.append(dist)
+            total_distance += dist
+            
+            # 段名称
+            if i == 1:
+                segment_name = f"起点 -> 拱门1"
+            elif i == len(flight_waypoints) - 1:
+                segment_name = f"拱门{i-1} -> 终点"
+            else:
+                segment_name = f"拱门{i-1} -> 拱门{i}"
+            
+            # 场地尺寸：左边黑墙44米(1129格)，下边黑墙17米(425格)
+            METERS_PER_GRID_X = 17.0 / 425.0
+            METERS_PER_GRID_Y = 44.0 / 1129.0
+            dx_m = (x2 - x1) * METERS_PER_GRID_X
+            dy_m = (y2 - y1) * METERS_PER_GRID_Y
+            dist_m = np.sqrt(dx_m**2 + dy_m**2)
+            segment_distances_m.append(dist_m)
+            print(f"  {segment_name}: {dist:.2f} 格 ({dist_m:.2f} 米)")
+        
+        # 计算实际总长度（米）
+        real_length = sum(segment_distances_m)
+        print(f"\n总飞行距离: {total_distance:.2f} 格 ({real_length:.2f} 米)")
+        
+        # 5. 可视化飞行路径
+        self._visualize_flight_path(flight_waypoints, segment_distances)
+        
+        # 6. 保存路径数据
+        flight_data = {
+            "type": "drone_flight_path",
+            "start": start_point,
+            "end": end_point,
+            "waypoints": flight_waypoints,
+            "gate_sequence": [f"拱门{i+1}" for i in range(min(8, len(self.gates)))],
+            "segment_distances_grid": segment_distances,
+            "segment_distances_meters": segment_distances_m,
+            "total_distance_grid": total_distance,
+            "total_distance_meters": real_length
+        }
+        
+        with open("output/drone_flight_path.json", 'w', encoding='utf-8') as f:
+            json.dump(flight_data, f, indent=2, ensure_ascii=False)
+        print(f"\n飞行路径数据已保存: output/drone_flight_path.json")
+        
+        return flight_waypoints
+    
+    def _visualize_flight_path(self, waypoints, segment_distances):
+        """可视化无人机飞行路径"""
+        # 创建图形
+        plt.figure(figsize=(16, 40))
+        
+        # 绘制格栅背景
+        vis = np.zeros((self.rows, self.cols, 3), dtype=np.uint8)
+        vis[self.grid == 0] = [240, 240, 240]  # 浅灰 - 可通行
+        vis[self.grid == 1] = [50, 50, 50]     # 深灰 - 障碍物
+        
+        plt.imshow(vis, aspect='auto')
+        
+        # 绘制飞行路径（直线连接）
+        path_x = [p[0] for p in waypoints]
+        path_y = [p[1] for p in waypoints]
+        
+        # 绘制路径线（红色虚线表示飞行路径）
+        plt.plot(path_x, path_y, 'r-', linewidth=2.5, label='无人机飞行路径', zorder=5)
+        plt.plot(path_x, path_y, 'r--', linewidth=1, alpha=0.5, zorder=4)
+        
+        # 标记起点（绿色大圆）
+        plt.plot(waypoints[0][0], waypoints[0][1], 'go', markersize=15, 
+                 label='起点', zorder=10, markeredgecolor='darkgreen', markeredgewidth=2)
+        plt.annotate('起点', (waypoints[0][0], waypoints[0][1] + 20), 
+                    color='green', fontsize=12, ha='center', fontweight='bold',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.9))
+        
+        # 标记终点（红色大圆）
+        plt.plot(waypoints[-1][0], waypoints[-1][1], 'ro', markersize=15, 
+                 label='终点', zorder=10, markeredgecolor='darkred', markeredgewidth=2)
+        plt.annotate('终点', (waypoints[-1][0], waypoints[-1][1] - 20), 
+                    color='red', fontsize=12, ha='center', fontweight='bold',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.9))
+        
+        # 标记拱门中心点（蓝色圆点）和编号
+        for i in range(1, len(waypoints) - 1):
+            x, y = waypoints[i]
+            plt.plot(x, y, 'bo', markersize=12, zorder=8, 
+                    markeredgecolor='darkblue', markeredgewidth=2)
+            
+            # 拱门编号标签
+            plt.annotate(f'{i}', (x, y), color='white', fontsize=10, 
+                        ha='center', va='center', fontweight='bold', zorder=9)
+            
+            # 拱门名称（偏移显示）
+            offset_x = 25 if i % 2 == 0 else -25
+            plt.annotate(f'拱门{i}', (x + offset_x, y), color='blue', fontsize=9,
+                        ha='center', va='center',
+                        bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.8))
+        
+        # 标注各段距离
+        for i in range(len(segment_distances)):
+            x1, y1 = waypoints[i]
+            x2, y2 = waypoints[i+1]
+            mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
+            # 场地尺寸：左边黑墙44米(1129格)，下边黑墙17米(425格)
+            METERS_PER_GRID_X = 17.0 / 425.0
+            METERS_PER_GRID_Y = 44.0 / 1129.0
+            dx_m = (x2 - x1) * METERS_PER_GRID_X
+            dy_m = (y2 - y1) * METERS_PER_GRID_Y
+            dist_m = np.sqrt(dx_m**2 + dy_m**2)
+            
+            # 计算文本角度
+            angle = np.degrees(np.arctan2(y2-y1, x2-x1))
+            
+            # 距离标签（米）
+            plt.annotate(f'{dist_m:.1f}m', (mid_x, mid_y), 
+                        color='purple', fontsize=8, ha='center', va='center',
+                        rotation=angle if abs(angle) < 90 else angle + 180,
+                        bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.7))
+        
+        # 计算总距离（使用正确的比例）
+        METERS_PER_GRID_X = 17.0 / 425.0
+        METERS_PER_GRID_Y = 44.0 / 1129.0
+        
+        total_dist_m = 0
+        for i in range(len(segment_distances)):
+            x1, y1 = waypoints[i]
+            x2, y2 = waypoints[i+1]
+            dx_m = (x2 - x1) * METERS_PER_GRID_X
+            dy_m = (y2 - y1) * METERS_PER_GRID_Y
+            dist_m = np.sqrt(dx_m**2 + dy_m**2)
+            total_dist_m += dist_m
+        
+        plt.title(f'无人机直飞最短路径 - 穿越拱门1-8\n总飞行距离: {total_dist_m:.2f} 米', 
+                 fontsize=14, fontweight='bold')
+        plt.xlabel('X (格)')
+        plt.ylabel('Y (格)')
+        plt.legend(loc='upper right')
+        
+        # 添加拱门顺序说明
+        order_text = "飞行顺序: 起点"
+        for i in range(1, len(waypoints) - 1):
+            order_text += f" → 拱门{i}"
+        order_text += " → 终点"
+        
+        plt.figtext(0.5, 0.01, order_text, ha='center', fontsize=10, 
+                   bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.8))
+        
+        # 保存图像
+        output_path = "output/drone_flight_path.png"
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"飞行路径图已保存: {output_path}")
     
     def find_shortest_path(self, original_image_path: str, manual_start=None, manual_end=None):
         """主函数：找出最短路径"""
@@ -341,13 +552,34 @@ if __name__ == "__main__":
     # 创建规划器
     planner = PathPlanner(grid_path)
     
-    # 用户指定的起点和终点坐标（x 必须是 350）
+    # 用户指定的起点和终点坐标
     manual_start = (350, 945)   # 起点
     manual_end = (350, 105)     # 终点
     
-    # 寻找最短路径
-    path = planner.find_shortest_path(image_path, manual_start, manual_end)
+    # 选择规划模式
+    mode = "drone"  # "ground" 或 "drone"
     
-    print("\n" + "=" * 60)
-    print("路径规划完成！")
-    print("=" * 60)
+    if len(sys.argv) > 2:
+        mode = sys.argv[2]
+    
+    if mode == "drone":
+        # 无人机直飞路径：起点 -> 拱门1-8 -> 终点
+        print("\n>>> 模式: 无人机直飞路径规划")
+        flight_path = planner.find_drone_flight_path(image_path, manual_start, manual_end)
+        
+        if flight_path:
+            print("\n" + "=" * 60)
+            print("无人机直飞路径规划完成！")
+            print(f"路径点数: {len(flight_path)}")
+            print("输出文件:")
+            print("  - output/drone_flight_path.png (可视化)")
+            print("  - output/drone_flight_path.json (路径数据)")
+            print("=" * 60)
+    else:
+        # 地面A*路径规划
+        print("\n>>> 模式: 地面A*路径规划")
+        path = planner.find_shortest_path(image_path, manual_start, manual_end)
+        
+        print("\n" + "=" * 60)
+        print("路径规划完成！")
+        print("=" * 60)

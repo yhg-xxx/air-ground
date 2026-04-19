@@ -1,6 +1,7 @@
 import {createRouter, createWebHashHistory} from "vue-router";
 import AuthView from "./views/AuthView.vue";
 import MainControl from "./views/MainControl.vue";
+import AutoControl from "./views/AutoControl.vue";
 
 const router = createRouter({
         history: createWebHashHistory(import.meta.env.BASE_URL),
@@ -24,6 +25,15 @@ const router = createRouter({
                 meta: {
                     requiresAuth: true,
                     title: '空地协同控制中心'
+                }
+            },
+            {
+                path: '/auto',
+                name: 'AutoControl',
+                component: AutoControl,
+                meta: {
+                    requiresAuth: true,
+                    title: '自动化任务控制'
                 }
             }
         ]

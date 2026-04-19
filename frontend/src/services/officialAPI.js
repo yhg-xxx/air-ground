@@ -181,22 +181,22 @@ export class WebSocketManager {
       case "aircraft_telemetry_power":
         this.telemetryData.aircraft.power = data.data.power
         this.telemetryData.aircraft.voltage = data.data.voltage
-        this.emit('aircraft_telemetry', this.telemetryData.aircraft)
+        this.emit('aircraft_telemetry', { ...this.telemetryData.aircraft })
         break
       case "aircraft_telemetry_gnss":
         this.telemetryData.aircraft.gps = data.data.gps
         this.telemetryData.aircraft.speed = data.data.speed
-        this.emit('aircraft_telemetry', this.telemetryData.aircraft)
+        this.emit('aircraft_telemetry', { ...this.telemetryData.aircraft })
         break
       case "vehicle_telemetry_power":
         this.telemetryData.vehicle.power = data.data.power
         this.telemetryData.vehicle.voltage = data.data.voltage
-        this.emit('vehicle_telemetry', this.telemetryData.vehicle)
+        this.emit('vehicle_telemetry', { ...this.telemetryData.vehicle })
         break
       case "vehicle_telemetry_gnss":
         this.telemetryData.vehicle.gps = data.data.gps
         this.telemetryData.vehicle.speed = data.data.speed
-        this.emit('vehicle_telemetry', this.telemetryData.vehicle)
+        this.emit('vehicle_telemetry', { ...this.telemetryData.vehicle })
         break
       case "vehicle_safety_fence_over":
         console.warn("⚠️ 车辆超出围栏")
