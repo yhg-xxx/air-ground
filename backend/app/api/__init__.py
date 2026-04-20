@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import auth, capture, ws, landing, control
+from app.api import auth, capture, ws, landing, control, maze
 
 api_router = APIRouter()
 
@@ -9,3 +9,4 @@ api_router.include_router(capture.router)
 api_router.include_router(ws.router)
 api_router.include_router(landing.router)
 api_router.include_router(control.router)
+api_router.include_router(maze.router)

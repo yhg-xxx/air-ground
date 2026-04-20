@@ -14,8 +14,11 @@
           <p class="text-secondary">用户名: fcs002</p>
           <p class="text-secondary">密码: wa729461</p>
         </div>
-        <el-button type="primary" @click="handleLogin" :loading="isLoading" style="width: 100%">
-          {{ isLoading ? '认证中...' : '获取Token' }}
+        <el-button type="primary" @click="handleLogin('control')" :loading="isLoading" style="width: 100%; margin-bottom: 12px;">
+          {{ isLoading ? '认证中...' : '进入手动控制' }}
+        </el-button>
+        <el-button type="success" @click="handleLogin('auto')" :loading="isLoading" style="width: 100%;">
+          {{ isLoading ? '认证中...' : '进入自动化任务' }}
         </el-button>
       </div>
     </el-card>
@@ -36,7 +39,7 @@ const router = useRouter()
 const isLoading = ref(false)
 
 // 处理登录
-const handleLogin = async () => {
+const handleLogin = async (target = 'control') => {
   try {
     isLoading.value = true
     
@@ -50,7 +53,7 @@ const handleLogin = async () => {
     await authAPI.setFrontendToken(token)
     
     ElMessage.success('认证成功')
-    await router.push('/control')
+    await router.push(`/${target}`)
   } catch (error) {
     ElMessage.error('认证失败：' + error.message)
   } finally {

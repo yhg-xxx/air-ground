@@ -1,17 +1,29 @@
 import axios from 'axios'
 
 // ===================== 官方配置 =====================
-const HOST = "fcs.botzooo.com"
-const PORT = 30080
-const WS_HOST = "fcs.botzooo.com"
-const WS_PORT = 30081
 const USERNAME = "fcs002"
 const PASSWORD = "wa729461"
 
-const MAX = 2000
-const MIN = 1000
-const MID = 1500
-const MIN_INTERVAL = 0.1
+// 官方通道定义（100% 匹配实际代码 demo_ws_client.py）
+// 车辆：通道1=转向（左转1000,右转2000） 通道2=油门（前进1700,后退1300）
+export const CONTROL_CHANNELS = {
+  // 车辆通道（匹配demo实际使用值）
+  VEHICLE_STEERING: 1,     // 转向：左转=1000, 中=1500, 右转=2000
+  VEHICLE_THROTTLE: 2,     // 油门：前进=1700, 中=1500, 后退=1300
+
+  // 无人机通道
+  AIRCRAFT_DIRECTION: 1,     // 左转右转
+  AIRCRAFT_ALTITUDE: 2,      // 上升下降
+  AIRCRAFT_MOVEMENT: 3,      // 左移右移
+  AIRCRAFT_THROTTLE: 4,      // 前进后退
+  AIRCRAFT_GIMBAL_PITCH: 5,  // 云台俯仰
+  AIRCRAFT_GIMBAL_ROLL: 6,   // 云台横滚
+  AIRCRAFT_TAKEOFF: 7,       // 起飞
+  AIRCRAFT_LAND: 8,          // 降落
+  AIRCRAFT_BACK: 9,          // 返航
+  AIRCRAFT_GIMBAL_RESET: 10  // 云台复位
+}
+
 
 // axios 代理配置
 const officialAPI = axios.create({
@@ -65,10 +77,10 @@ export const officialServerAPI = {
     }
   },
 
-  // 开始降落
+  // 开始降落（发送到本地后端）
   startLanding: async (targetArucoId = 0) => {
     try {
-      const response = await officialAPI.post('/landing/start', {
+      const response = await axios.post('/landing/start', {
         target_aruco_id: targetArucoId
       })
       return response.data
@@ -77,20 +89,20 @@ export const officialServerAPI = {
     }
   },
 
-  // 获取降落状态
+  // 获取降落状态（发送到本地后端）
   getLandingStatus: async () => {
     try {
-      const response = await officialAPI.get('/landing/status')
+      const response = await axios.get('/landing/status')
       return response.data
     } catch (error) {
       throw new Error("获取降落状态失败：" + error.message)
     }
   },
 
-  // 取消降落
+  // 取消降落（发送到本地后端）
   cancelLanding: async () => {
     try {
-      const response = await officialAPI.post('/landing/cancel')
+      const response = await axios.post('/landing/cancel')
       return response.data
     } catch (error) {
       throw new Error("取消降落失败：" + error.message)
@@ -181,22 +193,22 @@ export class WebSocketManager {
       case "aircraft_telemetry_power":
         this.telemetryData.aircraft.power = data.data.power
         this.telemetryData.aircraft.voltage = data.data.voltage
-        this.emit('aircraft_telemetry', this.telemetryData.aircraft)
+        this.emit('aircraft_telemetry', { ...this.telemetryData.aircraft })
         break
       case "aircraft_telemetry_gnss":
         this.telemetryData.aircraft.gps = data.data.gps
         this.telemetryData.aircraft.speed = data.data.speed
-        this.emit('aircraft_telemetry', this.telemetryData.aircraft)
+        this.emit('aircraft_telemetry', { ...this.telemetryData.aircraft })
         break
       case "vehicle_telemetry_power":
         this.telemetryData.vehicle.power = data.data.power
         this.telemetryData.vehicle.voltage = data.data.voltage
-        this.emit('vehicle_telemetry', this.telemetryData.vehicle)
+        this.emit('vehicle_telemetry', { ...this.telemetryData.vehicle })
         break
       case "vehicle_telemetry_gnss":
         this.telemetryData.vehicle.gps = data.data.gps
         this.telemetryData.vehicle.speed = data.data.speed
-        this.emit('vehicle_telemetry', this.telemetryData.vehicle)
+        this.emit('vehicle_telemetry', { ...this.telemetryData.vehicle })
         break
       case "vehicle_safety_fence_over":
         console.warn("⚠️ 车辆超出围栏")
@@ -265,36 +277,4 @@ export class WebSocketManager {
     if (this.ws) this.ws.close()
     this.isConnected = false
   }
-
-  getTelemetryData() {
-    return this.telemetryData
-  }
 }
-
-// 官方通道定义（100% 匹配实际代码 demo_ws_client.py）
-// 车辆：通道1=转向（左转1000,右转2000） 通道2=油门（前进1700,后退1300）
-export const CONTROL_CHANNELS = {
-  // 车辆通道（匹配demo实际使用值）
-  VEHICLE_STEERING: 1,     // 转向：左转=1000, 中=1500, 右转=2000  
-  VEHICLE_THROTTLE: 2,     // 油门：前进=1700, 中=1500, 后退=1300
-
-  // 无人机通道
-  AIRCRAFT_DIRECTION: 1,     // 左转右转
-  AIRCRAFT_ALTITUDE: 2,      // 上升下降
-  AIRCRAFT_MOVEMENT: 3,      // 左移右移
-  AIRCRAFT_THROTTLE: 4,      // 前进后退
-  AIRCRAFT_GIMBAL_PITCH: 5,  // 云台俯仰
-  AIRCRAFT_GIMBAL_ROLL: 6,   // 云台横滚
-  AIRCRAFT_TAKEOFF: 7,       // 起飞
-  AIRCRAFT_LAND: 8,          // 降落
-  AIRCRAFT_BACK: 9,          // 返航
-  AIRCRAFT_GIMBAL_RESET: 10  // 云台复位
-}
-
-export const CONTROL_VALUES = {
-  MAX: 2000,
-  MIN: 1000,
-  MID: 1500
-}
-
-export default officialServerAPI

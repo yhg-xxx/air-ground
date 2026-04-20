@@ -1,77 +1,90 @@
 <template>
-  <div class="main-control">
-    <!-- 页面标题 -->
-    <el-card class="page-header">
-      <template #header>
-        <div class="card-header">
-          <el-icon><Monitor /></el-icon>
-          <span>空地协同控制中心</span>
+  <div class="main-control futuristic">
+    <!-- 顶部状态栏 -->
+    <div class="top-status-bar">
+      <div class="system-title">
+        <div class="title-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
         </div>
-      </template>
-      <div class="connection-status">
-        <el-tag :type="wsConnected ? 'success' : 'danger'" effect="dark">
-          {{ wsConnected ? 'WebSocket已连接' : 'WebSocket未连接' }}
-        </el-tag>
-        <el-button type="primary" size="small" @click="connectWebSocket" :disabled="wsConnected">
-          连接WebSocket
+        <span class="main-title">空地协同</span>
+      </div>
+
+      <!-- 紧凑设备状态显示 -->
+      <div class="compact-telemetry">
+        <!-- 无人机 -->
+        <div class="telemetry-chip aircraft">
+          <span class="chip-icon">✈️</span>
+          <div class="chip-data">
+            <div class="chip-row">
+              <span class="chip-label">电量</span>
+              <div class="mini-progress">
+                <div class="mini-fill" :class="getBatteryClass(telemetryData.aircraft.power)" 
+                     :style="{ width: telemetryData.aircraft.power + '%' }"></div>
+              </div>
+              <span class="chip-value">{{ telemetryData.aircraft.power }}%</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip-label">电压</span>
+              <span class="chip-value">{{ telemetryData.aircraft.voltage }}V</span>
+              <span class="chip-divider">|</span>
+              <span class="chip-label">速度</span>
+              <span class="chip-value">{{ telemetryData.aircraft.speed }}m/s</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip-label">GPS</span>
+              <span class="chip-value gps">{{ formatGps(telemetryData.aircraft.gps) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 无人车 -->
+        <div class="telemetry-chip vehicle">
+          <span class="chip-icon">🚗</span>
+          <div class="chip-data">
+            <div class="chip-row">
+              <span class="chip-label">电量</span>
+              <div class="mini-progress">
+                <div class="mini-fill" :class="getBatteryClass(telemetryData.vehicle.power)" 
+                     :style="{ width: telemetryData.vehicle.power + '%' }"></div>
+              </div>
+              <span class="chip-value">{{ telemetryData.vehicle.power }}%</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip-label">电压</span>
+              <span class="chip-value">{{ telemetryData.vehicle.voltage }}V</span>
+              <span class="chip-divider">|</span>
+              <span class="chip-label">速度</span>
+              <span class="chip-value">{{ telemetryData.vehicle.speed }}m/s</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip-label">GPS</span>
+              <span class="chip-value gps">{{ formatGps(telemetryData.vehicle.gps) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="connection-indicator">
+        <div class="status-dot" :class="wsConnected ? 'online' : 'offline'"></div>
+        <span class="status-text">{{ wsConnected ? '在线' : '离线' }}</span>
+        <el-button 
+          :type="wsConnected ? 'success' : 'primary'" 
+          size="small" 
+          @click="connectWebSocket" 
+          :disabled="wsConnected"
+          class="connect-btn"
+        >
+          {{ wsConnected ? '已连接' : '连接' }}
         </el-button>
       </div>
-    </el-card>
+    </div>
 
     <!-- 主内容区 -->
-    <el-row :gutter="20" class="main-content">
-      <!-- 左侧：设备状态和遥测数据 -->
-      <el-col :span="6">
-        <el-card class="status-card">
-          <template #header>
-            <div class="card-header">
-              <el-icon><DataAnalysis /></el-icon>
-              <span>设备状态</span>
-            </div>
-          </template>
-
-          <!-- 无人机状态 -->
-          <el-collapse v-model="activeStatusTab">
-            <el-collapse-item title="无人机状态" name="aircraft">
-              <el-descriptions :column="1" border>
-                <el-descriptions-item label="电量">
-                  {{ telemetryData.aircraft.power }}%
-                </el-descriptions-item>
-                <el-descriptions-item label="电压">
-                  {{ telemetryData.aircraft.voltage }}V
-                </el-descriptions-item>
-                <el-descriptions-item label="GPS">
-                  {{ formatGps(telemetryData.aircraft.gps) }}
-                </el-descriptions-item>
-                <el-descriptions-item label="速度">
-                  {{ telemetryData.aircraft.speed }}m/s
-                </el-descriptions-item>
-              </el-descriptions>
-            </el-collapse-item>
-
-            <!-- 无人车状态 -->
-            <el-collapse-item title="无人车状态" name="vehicle">
-              <el-descriptions :column="1" border>
-                <el-descriptions-item label="电量">
-                  {{ telemetryData.vehicle.power }}%
-                </el-descriptions-item>
-                <el-descriptions-item label="电压">
-                  {{ telemetryData.vehicle.voltage }}V
-                </el-descriptions-item>
-                <el-descriptions-item label="GPS">
-                  {{ formatGps(telemetryData.vehicle.gps) }}
-                </el-descriptions-item>
-                <el-descriptions-item label="速度">
-                  {{ telemetryData.vehicle.speed }}m/s
-                </el-descriptions-item>
-              </el-descriptions>
-            </el-collapse-item>
-          </el-collapse>
-        </el-card>
-      </el-col>
-
-      <!-- 中间：控制界面 -->
-      <el-col :span="12">
+    <el-row :gutter="16" class="main-content">
+      <!-- 控制界面 -->
+      <el-col :span="16">
         <el-card class="control-card">
           <template #header>
             <div class="card-header">
@@ -80,14 +93,15 @@
             </div>
           </template>
 
-          <!-- 控制选项卡 -->
-          <el-tabs v-model="activeControlTab">
+          <!-- 双设备控制面板 -->
+          <div class="dual-control-panel">
             <!-- 无人车控制 -->
-            <el-tab-pane label="无人车控制" name="vehicle">
+            <div class="control-section vehicle-section">
+              <h4 class="section-title">🚗 无人车控制</h4>
               <div class="control-panel joystick-mode">
                 <div class="joystick-wrapper">
                   <VirtualJoystick
-                    :size="200"
+                    :size="160"
                     label="移动控制"
                     topLabel="前进"
                     bottomLabel="后退"
@@ -97,90 +111,61 @@
                     @change="handleVehicleJoystick"
                   />
                 </div>
-                <div class="control-tips">
-                  <p><strong>操作说明：</strong></p>
+                <div class="control-tips compact">
                   <p>• 上下：前进/后退</p>
                   <p>• 左右：左转/右转</p>
-                  <p>• 松手自动归中停止</p>
                 </div>
               </div>
-            </el-tab-pane>
+            </div>
 
             <!-- 无人机控制 -->
-            <el-tab-pane label="无人机控制" name="aircraft">
+            <div class="control-section aircraft-section">
+              <h4 class="section-title">✈️ 无人机控制</h4>
               <div class="control-panel joystick-mode">
-                <div class="dual-joystick-container">
-                  <!-- 左摇杆：上升下降 + 左转右转 -->
-                  <div class="joystick-wrapper">
-                    <VirtualJoystick
-                      :size="180"
-                      label="姿态控制"
-                      topLabel="上升"
-                      bottomLabel="下降"
-                      leftLabel="左转"
-                      rightLabel="右转"
-                      :showSpeedLimit="true"
-                      @change="handleAircraftLeftJoystick"
-                    />
-                  </div>
-                  
-                  <!-- 右摇杆：前进后退 + 左移右移 -->
-                  <div class="joystick-wrapper">
-                    <VirtualJoystick
-                      :size="180"
-                      label="移动控制"
-                      topLabel="前进"
-                      bottomLabel="后退"
-                      leftLabel="左移"
-                      rightLabel="右移"
-                      :showSpeedLimit="true"
-                      @change="handleAircraftRightJoystick"
-                    />
-                  </div>
-                </div>
-                
-                <div class="control-tips small">
-                  <p><strong>左摇杆：</strong>上升/下降 + 左转/右转</p>
-                  <p><strong>右摇杆：</strong>前进/后退 + 左移/右移</p>
-                  <p><strong>WASD键盘：</strong>可替代左摇杆进行姿态控制</p>
+                <!-- 移动摇杆 -->
+                <div class="joystick-wrapper">
+                  <VirtualJoystick
+                    :size="160"
+                    label="移动控制"
+                    topLabel="前进"
+                    bottomLabel="后退"
+                    leftLabel="左移"
+                    rightLabel="右移"
+                    :showSpeedLimit="true"
+                    @change="handleAircraftRightJoystick"
+                  />
                 </div>
 
                 <!-- 键盘控制 -->
-                <div class="keyboard-control-section">
-                  <h4>
-                    姿态键盘控制
+                <div class="keyboard-control-section compact">
+                  <div class="keyboard-header">
+                    <span>WASD姿态控制</span>
                     <el-switch
                       v-model="keyboardControlEnabled"
                       @change="toggleKeyboardControl"
-                      style="margin-left: 10px;"
+                      size="small"
                     />
-                  </h4>
+                  </div>
                   
                   <div v-if="keyboardControlEnabled" class="keyboard-tips">
-                    <div class="wasd-layout">
+                    <div class="wasd-layout compact">
                       <div class="wasd-row">
-                        <div class="wasd-key" :class="{ 'active': pressedKeys.has('W') }">W<span>上升</span></div>
+                        <div class="wasd-key small" :class="{ 'active': pressedKeys.has('W') }">W<span>升</span></div>
                       </div>
                       <div class="wasd-row">
-                        <div class="wasd-key" :class="{ 'active': pressedKeys.has('A') }">A<span>左转</span></div>
-                        <div class="wasd-key" :class="{ 'active': pressedKeys.has('S') }">S<span>下降</span></div>
-                        <div class="wasd-key" :class="{ 'active': pressedKeys.has('D') }">D<span>右转</span></div>
+                        <div class="wasd-key small" :class="{ 'active': pressedKeys.has('A') }">A<span>左</span></div>
+                        <div class="wasd-key small" :class="{ 'active': pressedKeys.has('S') }">S<span>降</span></div>
+                        <div class="wasd-key small" :class="{ 'active': pressedKeys.has('D') }">D<span>右</span></div>
                       </div>
                     </div>
-                    <p class="keyboard-status">
-                      状态: <span :class="keyboardControlEnabled ? 'status-enabled' : 'status-disabled'">
-                        {{ keyboardControlEnabled ? '已启用' : '已禁用' }}
-                      </span>
-                    </p>
                   </div>
                 </div>
 
-                <h4>云台控制</h4>
-                
-                <!-- 云台灵敏度调节 -->
-                <div class="gimbal-sensitivity-section">
-                  <div class="sensitivity-label">
-                    <span>灵敏度: {{ Math.round(gimbalSensitivity * 100) }}%</span>
+                <!-- 云台控制 -->
+                <div class="gimbal-section">
+                  <div class="gimbal-header">
+                    <span>云台</span>
+                    <span class="sensitivity-value">{{ Math.round(gimbalSensitivity * 100) }}%</span>
                   </div>
                   <el-slider
                     v-model="gimbalSensitivity"
@@ -188,13 +173,23 @@
                     :max="1.0"
                     :step="0.1"
                     :show-tooltip="false"
-                    style="margin: 10px 0;"
+                    size="small"
+                    style="margin: 5px 0;"
                   />
-                  <div class="sensitivity-tips">
-                    <span>低</span>
-                    <span>高</span>
+                  <div class="gimbal-joystick-wrapper compact">
+                    <VirtualJoystick
+                      :size="100"
+                      topLabel="仰"
+                      bottomLabel="俯"
+                      leftLabel="左"
+                      rightLabel="右"
+                      :autoCenter="true"
+                      @change="handleGimbalJoystick"
+                    />
                   </div>
                 </div>
+<<<<<<< HEAD
+=======
                 
                 <div class="gimbal-joystick-wrapper">
                   <VirtualJoystick
@@ -203,47 +198,34 @@
                     bottomLabel="下俯"
                     leftLabel="左滚"
                     rightLabel="右滚"
-                    :autoCenter="false"
+                    :autoCenter="true"
                     @change="handleGimbalJoystick"
                   />
                 </div>
+>>>>>>> af5652457d7df8440f9f550df66f2f103f1b09f0
 
-                <div class="drone-buttons">
-                  <el-button type="primary" @click="sendDroneCommand('takeoff')">
+                <div class="drone-buttons compact">
+                  <el-button type="primary" size="small" @click="sendDroneCommand('takeoff')">
                     起飞
                   </el-button>
-                  <el-button type="warning" @click="sendDroneCommand('land')">
+                  <el-button type="warning" size="small" @click="sendDroneCommand('land')">
                     降落
                   </el-button>
-                  <el-button type="danger" @click="sendDroneCommand('back')">
+                  <el-button type="danger" size="small" @click="sendDroneCommand('back')">
                     返航
                   </el-button>
-                  <el-button type="info" @click="sendDroneCommand('gimbalReset')">
+                  <el-button type="info" size="small" @click="sendDroneCommand('gimbalReset')">
                     云台复位
                   </el-button>
                 </div>
-
-                <!-- 降落测试按钮 -->
-                <div class="landing-buttons">
-                  <h4>降落测试</h4>
-                  <el-button type="success" @click="startLandingTest">
-                    开始降落测试
-                  </el-button>
-                  <el-button type="info" @click="getLandingStatusTest">
-                    获取降落状态
-                  </el-button>
-                  <el-button type="danger" @click="cancelLandingTest">
-                    取消降落
-                  </el-button>
-                </div>
               </div>
-            </el-tab-pane>
-          </el-tabs>
+            </div>
+          </div>
         </el-card>
       </el-col>
 
       <!-- 右侧：图像显示和抓拍功能 -->
-      <el-col :span="6">
+      <el-col :span="8">
         <el-card class="image-card">
           <template #header>
             <div class="card-header">
@@ -304,7 +286,7 @@ const aircraftGimbalRoll = ref(1500) // 云台横滚
 
 // 界面状态
 const activeStatusTab = ref(['aircraft'])
-const activeControlTab = ref('vehicle')
+// const activeControlTab = ref('vehicle')  // 不再需要tab切换
 const capturedImage = ref(null)
 const isCapturing = ref(false)
 
@@ -324,6 +306,13 @@ const formatGps = (gps) => {
   }
   if (typeof gps === 'string' && gps.trim()) return gps
   return '无数据'
+}
+
+// 电量样式类
+const getBatteryClass = (power) => {
+  if (power > 60) return 'battery-good'
+  if (power > 20) return 'battery-medium'
+  return 'battery-low'
 }
 
 // 连接WebSocket
@@ -644,19 +633,406 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.main-control {
-  padding: 20px 0;
+/* 和谐深色主题 */
+.main-control.futuristic {
+  padding: 0;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1e2732 0%, #2d3748 50%, #1a202c 100%);
 }
 
-.page-header {
-  margin-bottom: 20px;
+/* 顶部状态栏 */
+.top-status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: rgba(45, 55, 72, 0.8);
+  border-bottom: 1px solid rgba(74, 85, 104, 0.3);
+  backdrop-filter: blur(15px);
+}
+
+.system-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #3b82f6, #10b981);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+}
+
+.title-icon svg {
+  width: 20px;
+  height: 20px;
+  color: white;
+}
+
+.title-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.main-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 2px;
+}
+
+.sub-title {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 1px;
+}
+
+.connection-indicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.status-dot.online {
+  background: #10b981;
+  box-shadow: 0 0 10px #10b981;
+}
+
+.status-dot.offline {
+  background: #ef4444;
+  box-shadow: 0 0 10px #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-text {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+}
+
+.connect-btn {
+  border-radius: 20px;
+}
+
+/* 紧凑遥测芯片 */
+.compact-telemetry {
+  display: flex;
+  gap: 16px;
+}
+
+.telemetry-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 8px 14px;
+  backdrop-filter: blur(10px);
+}
+
+.telemetry-chip.aircraft {
+  border-left: 3px solid #3b82f6;
+}
+
+.telemetry-chip.vehicle {
+  border-left: 3px solid #10b981;
+}
+
+.chip-icon {
+  font-size: 20px;
+}
+
+.chip-data {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.chip-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.chip-value.gps {
+  font-size: 10px;
+  font-family: 'Monaco', 'Consolas', monospace;
+  color: rgba(255, 255, 255, 0.8);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-divider {
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0 2px;
+}
+
+.mini-progress {
+  width: 40px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mini-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.mini-fill.battery-good {
+  background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.mini-fill.battery-medium {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.mini-fill.battery-low {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+/* 和谐玻璃卡片效果 */
+.glass-card {
+  background: rgba(45, 55, 72, 0.4);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid rgba(74, 85, 104, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  height: 100%;
+}
+
+/* 状态面板 */
+.status-panel {
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.header-icon {
+  font-size: 20px;
+}
+
+/* 设备卡片 */
+.device-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+}
+
+.device-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.device-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.device-icon {
+  font-size: 28px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.device-info {
+  flex: 1;
+}
+
+.device-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  display: block;
+}
+
+.device-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  display: inline-block;
+  margin-top: 2px;
+}
+
+.device-status.status-good {
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+}
+
+.device-status.status-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+
+/* 遥测数据网格 */
+.telemetry-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.telemetry-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.telemetry-item:last-child {
+  border-bottom: none;
+}
+
+.item-label {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.item-icon {
+  font-size: 14px;
+}
+
+.item-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-bar {
+  width: 60px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.battery-good {
+  background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.progress-fill.battery-medium {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.progress-fill.battery-low {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.value-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  min-width: 36px;
+  text-align: right;
+}
+
+.value-number {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.value-unit {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-left: 2px;
+}
+
+.gps-value {
+  font-size: 11px;
+  color: #475569;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+/* 主内容区 */
+.main-content {
+  padding: 16px;
+  margin-top: 0;
+}
+
+/* 和谐控制卡片 */
+.control-card,
+.image-card {
+  height: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(74, 85, 104, 0.2);
+  background: rgba(45, 55, 72, 0.3);
+  backdrop-filter: blur(15px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 .card-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 500;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+/* 保留原有样式 */
+.page-header {
+  margin-bottom: 20px;
 }
 
 .connection-status {
@@ -666,13 +1042,7 @@ onUnmounted(() => {
   margin-top: 10px;
 }
 
-.main-content {
-  margin-top: 20px;
-}
-
-.status-card,
-.control-card,
-.image-card {
+.status-card {
   height: 100%;
 }
 
@@ -733,18 +1103,23 @@ onUnmounted(() => {
 }
 
 .control-tips {
-  background: #f5f7fa;
+  background: rgba(74, 85, 104, 0.2);
   padding: 12px 16px;
   border-radius: 8px;
   font-size: 13px;
-  color: #606266;
+  color: #cbd5e0;
   width: 100%;
   max-width: 300px;
 }
 
-.control-tips.small {
-  font-size: 12px;
-  padding: 8px 12px;
+.control-tips.compact {
+  font-size: 11px;
+  padding: 6px 10px;
+  max-width: 160px;
+}
+
+.control-tips.compact p {
+  margin: 2px 0;
 }
 
 .control-tips p {
@@ -752,7 +1127,7 @@ onUnmounted(() => {
 }
 
 .control-tips strong {
-  color: #303133;
+  color: #e2e8f0;
 }
 
 .drone-buttons {
@@ -760,6 +1135,11 @@ onUnmounted(() => {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 20px;
+}
+
+.drone-buttons.compact {
+  gap: 6px;
+  margin-top: 12px;
 }
 
 .landing-buttons {
@@ -780,8 +1160,9 @@ onUnmounted(() => {
 
 .image-container {
   height: 300px;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  border: 1px solid rgba(74, 85, 104, 0.3);
+  border-radius: 8px;
+  background: rgba(74, 85, 104, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -797,12 +1178,13 @@ onUnmounted(() => {
 
 .image-placeholder {
   text-align: center;
-  color: #909399;
+  color: #a0aec0;
 }
 
 .placeholder-icon {
   font-size: 48px;
   margin-bottom: 10px;
+  color: #718096;
 }
 
 .capture-controls {
@@ -813,9 +1195,9 @@ onUnmounted(() => {
 .keyboard-control-section {
   margin: 20px 0;
   padding: 15px;
-  background: #f8f9fa;
+  background: rgba(74, 85, 104, 0.15);
   border-radius: 8px;
-  border: 1px solid #e4e7ed;
+  border: 1px solid rgba(74, 85, 104, 0.3);
 }
 
 .keyboard-control-section h4 {
@@ -824,10 +1206,12 @@ onUnmounted(() => {
   align-items: center;
   font-size: 14px;
   font-weight: 500;
+  color: #e2e8f0;
 }
 
 .keyboard-tips {
   margin-top: 10px;
+  color: #e2e8f0;
 }
 
 .wasd-layout {
@@ -847,16 +1231,16 @@ onUnmounted(() => {
 .wasd-key {
   width: 50px;
   height: 50px;
-  border: 2px solid #d4dae4;
+  border: 2px solid rgba(74, 85, 104, 0.4);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.9);
   font-weight: bold;
   font-size: 14px;
-  color: #606266;
+  color: #4a5568;
   transition: all 0.2s ease;
   position: relative;
 }
@@ -865,7 +1249,7 @@ onUnmounted(() => {
   font-size: 10px;
   font-weight: normal;
   margin-top: 2px;
-  color: #909399;
+  color: #718096;
 }
 
 .wasd-key.active {
@@ -918,11 +1302,116 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #909399;
   margin-top: 5px;
 }
 
 /* 响应式调整 */
+/* 双设备控制面板布局 */
+.dual-control-panel {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+.control-section {
+  flex: 1;
+  padding: 15px;
+  border-radius: 8px;
+  background: rgba(74, 85, 104, 0.15);
+  border: 1px solid rgba(74, 85, 104, 0.3);
+}
+
+.section-title {
+  margin: 0 0 15px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+  text-align: center;
+}
+
+/* 紧凑样式 */
+.control-tips.compact {
+  padding: 8px 12px;
+  font-size: 12px;
+  max-width: 200px;
+}
+
+.keyboard-control-section.compact {
+  margin: 10px 0;
+  padding: 10px;
+}
+
+.keyboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #e2e8f0;
+}
+
+.wasd-layout.compact {
+  gap: 4px;
+  margin-bottom: 0;
+}
+
+.wasd-key.small {
+  width: 36px;
+  height: 36px;
+  font-size: 12px;
+}
+
+.wasd-key.small span {
+  font-size: 9px;
+  margin-top: 1px;
+}
+
+/* 云台区域 */
+.gimbal-section {
+  margin: 10px 0;
+  padding: 10px;
+  background: rgba(74, 85, 104, 0.15);
+  border-radius: 6px;
+}
+
+.gimbal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 5px;
+  color: #e2e8f0;
+}
+
+.sensitivity-value {
+  color: #3b82f6;
+  font-size: 12px;
+}
+
+.gimbal-joystick-wrapper.compact {
+  margin: 8px 0 0 0;
+}
+
+/* 紧凑按钮组 */
+.drone-buttons.compact {
+  margin-top: 10px;
+  gap: 6px;
+  justify-content: center;
+}
+
+/* 响应式调整 */
+@media screen and (max-width: 1400px) {
+  .dual-control-panel {
+    flex-direction: column;
+  }
+  
+  .control-section {
+    width: 100%;
+  }
+}
+
 @media screen and (max-width: 1200px) {
   .el-col {
     margin-bottom: 20px;
