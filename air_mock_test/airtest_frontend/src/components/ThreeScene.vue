@@ -2,32 +2,27 @@
   <div class="three-scene">
     <div class="scene-top">
       <div class="camera-sidebar">
-        <div ref="vehicleCameraContainer" class="vehicle-camera-container"></div>
-        <div ref="aircraftCameraContainer" class="aircraft-camera-container"></div>
+        <div class="camera-wrapper">
+          <div class="camera-label">无人车摄像头</div>
+          <div class="camera-position">位置: {{ vehiclePosition }}</div>
+          <div ref="vehicleCameraContainer" class="vehicle-camera-container"></div>
+        </div>
+        <div class="camera-wrapper">
+          <div class="camera-label">无人机摄像头</div>
+          <div class="camera-position">位置: {{ aircraftPosition }}</div>
+          <div ref="aircraftCameraContainer" class="aircraft-camera-container"></div>
+        </div>
       </div>
-      <div ref="container" class="scene-container"></div>
-    </div>
-    <div class="scene-controls">
-      <h3>3D 场景控制</h3>
-      <div class="control-buttons">
-        <button @click="toggleCamera">切换视角</button>
-        <button @click="resetScene">重置场景</button>
-      </div>
-      <div class="control-instructions">
-        <h4>遥感操作：</h4>
-        <p><strong>无人机：</strong>WS前进后退 | AD左转右转 | IK升降 | QE云台俯仰</p>
-        <p><strong>车辆：</strong>↑↓前后 | ←→转向</p>
-      </div>
-      <div class="status">
-        <p>无人机位置: {{ aircraftPosition }}</p>
-        <p>车辆位置: {{ vehiclePosition }}</p>
+      <div class="scene-wrapper">
+        <div class="scene-label">全局视角</div>
+        <div ref="container" class="scene-container"></div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
@@ -48,6 +43,217 @@ let cameraMode = ref('orbit'); // orbit, follow, camera
 
 // 键盘状态监听
 const keys = ref({});
+
+// 自动化算法状态
+const isAutoMissionRunning = ref(false);
+let ws = null; // WebSocket连接
+let telemetryInterval = null; // 遥测数据发送定时器
+
+// ====================== 自动化算法控制 ======================
+function startAutoMission() {
+  if (isAutoMissionRunning.value) return;
+  
+  console.log('准备启动自动化算法');
+  isAutoMissionRunning.value = true;
+  
+  // 调用后端API启动自动化算法
+  fetch('http://localhost:30080/api/auto/start', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('自动化算法启动响应:', data);
+    if (data.code === '1') {
+      console.log('自动化算法已启动');
+    } else {
+      console.error('启动失败:', data.msg);
+      isAutoMissionRunning.value = false;
+    }
+  })
+  .catch(error => {
+    console.error('启动自动化算法失败:', error);
+    isAutoMissionRunning.value = false;
+  });
+}
+
+function connectWebSocket() {
+  // 如果已经连接，先关闭
+  if (ws) {
+    ws.close();
+  }
+  
+  // 连接到mock_server的WebSocket
+  console.log('正在连接WebSocket...');
+  ws = new WebSocket('ws://localhost:30081?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
+  
+  ws.onopen = () => {
+    console.log('WebSocket连接已建立，readyState:', ws.readyState);
+    // 开始定期发送遥测数据
+    startTelemetrySending();
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('收到遥测数据:', data.type);
+      
+      if (data.type === 'control') {
+        // 处理控制指令
+        handleControlCommand(data);
+      } else if (data.type === 'aircraft_telemetry_gnss') {
+        // 忽略mock_server发送的无人机位置更新，只依赖控制指令
+        console.log('忽略mock_server的无人机位置更新');
+      } else if (data.type === 'vehicle_telemetry_gnss') {
+        // 忽略mock_server发送的车辆位置更新，只依赖控制指令
+        console.log('忽略mock_server的车辆位置更新');
+      } else if (data.type === 'capture_image_request') {
+        // 收到图片抓拍请求
+        console.log('收到图片抓拍请求');
+        const imageUrl = captureImageInternal();
+        if (imageUrl) {
+          // 将图片数据通过WebSocket发送回后端
+          ws.send(JSON.stringify({
+            type: 'capture_image_response',
+            data: imageUrl
+          }));
+          console.log('已发送图片数据');
+        }
+      }
+    } catch (e) {
+      console.error('解析遥测数据失败:', e, event.data);
+    }
+  };
+  
+  ws.onerror = (error) => {
+    console.error('WebSocket错误:', error);
+  };
+  
+  ws.onclose = () => {
+    console.log('WebSocket连接已关闭');
+    isAutoMissionRunning.value = false;
+  };
+}
+
+function disconnectWebSocket() {
+  if (telemetryInterval) {
+    clearInterval(telemetryInterval);
+    telemetryInterval = null;
+  }
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+}
+
+// 内部图片抓拍函数
+function captureImageInternal() {
+  if (aircraftCamera && aircraftRenderer) {
+    // 使用无人机视角的渲染器渲染场景
+    aircraftRenderer.render(scene, aircraftCamera);
+    const imageUrl = aircraftRenderer.domElement.toDataURL('image/jpeg');
+    return imageUrl;
+  }
+  return null;
+}
+
+// ====================== 处理来自后端的控制指令 ======================
+function handleControlCommand(command) {
+  const target = command.target;
+  const channel = command.channel;
+  const value = command.value;
+  
+  console.log('收到控制指令:', target, '通道', channel, '值', value);
+  
+  const ac = telemetryData.value.aircraft;
+  const vc = telemetryData.value.vehicle;
+  
+  // 移动速度因子（大幅增加速度）
+  const speed = 0.5;
+  const altitudeSpeed = 2.0;
+  
+  let updated = false;
+  
+  if (target === 'aircraft') {
+    if (channel === 1) {  // 左转/右转
+      if (value > 1500) {  // 右转
+        ac.rotation.y -= speed * (value - 1500) / 500 * (180/Math.PI);
+        console.log('右转:', ac.rotation.y);
+        updated = true;
+      } else if (value < 1500) {  // 左转
+        ac.rotation.y += speed * (1500 - value) / 500 * (180/Math.PI);
+      }
+    } else if (channel === 2) {  // 上升/下降
+      if (value > 1500) {  // 上升
+        ac.position.y += altitudeSpeed * (value - 1500) / 500;
+      } else if (value < 1500) {  // 下降
+        ac.position.y -= altitudeSpeed * (1500 - value) / 500;
+        if (ac.position.y < 0.2) ac.position.y = 0.2;
+      }
+    } else if (channel === 3) {  // 左移/右移
+      const yawRad = ac.rotation.y * Math.PI / 180;
+      if (value > 1500) {  // 右移
+        ac.position.x += Math.cos(yawRad) * speed * (value - 1500) / 500;
+        ac.position.z -= Math.sin(yawRad) * speed * (value - 1500) / 500;
+      } else if (value < 1500) {  // 左移
+        ac.position.x -= Math.cos(yawRad) * speed * (1500 - value) / 500;
+        ac.position.z += Math.sin(yawRad) * speed * (1500 - value) / 500;
+      }
+    } else if (channel === 4) {  // 前进/后退
+      const yawRad = ac.rotation.y * Math.PI / 180;
+      if (value > 1500) {  // 前进
+        ac.position.x -= Math.sin(yawRad) * speed * (value - 1500) / 500;
+        ac.position.z -= Math.cos(yawRad) * speed * (value - 1500) / 500;
+      } else if (value < 1500) {  // 后退
+        ac.position.x += Math.sin(yawRad) * speed * (1500 - value) / 500;
+        ac.position.z += Math.cos(yawRad) * speed * (1500 - value) / 500;
+      }
+    } else if (channel === 5) {  // 云台俯仰
+      if (value > 1500) {  // 仰
+        ac.gimbal.pitch += 1.0 * (value - 1500) / 500;
+        if (ac.gimbal.pitch > 90) ac.gimbal.pitch = 90;
+      } else if (value < 1500) {  // 俯
+        ac.gimbal.pitch -= 1.0 * (1500 - value) / 500;
+        if (ac.gimbal.pitch < -90) ac.gimbal.pitch = -90;
+      }
+    } else if (channel === 6) {  // 云台横滚
+      if (value > 1500) {  // 左
+        ac.gimbal.roll += 1.0 * (value - 1500) / 500;
+        if (ac.gimbal.roll > 45) ac.gimbal.roll = 45;
+      } else if (value < 1500) {  // 右
+        ac.gimbal.roll -= 1.0 * (1500 - value) / 500;
+        if (ac.gimbal.roll < -45) ac.gimbal.roll = -45;
+      }
+    } else if (channel === 7) {  // 起飞
+      if (value >= 1500) {
+        ac.position.y = 10.0;
+      }
+    } else if (channel === 8) {  // 降落
+      if (value >= 1500) {
+        ac.position.y = 0.05;
+      }
+    }
+  } else if (target === 'vehicle') {
+    if (channel === 1) {  // 前进/后退
+      const vYawRad = vc.rotation.y * Math.PI / 180;
+      if (value > 1500) {  // 前进
+        vc.position.x += Math.sin(vYawRad) * speed * (value - 1500) / 500;
+        vc.position.z += Math.cos(vYawRad) * speed * (value - 1500) / 500;
+      } else if (value < 1500) {  // 后退
+        vc.position.x -= Math.sin(vYawRad) * speed * (1500 - value) / 500;
+        vc.position.z -= Math.cos(vYawRad) * speed * (1500 - value) / 500;
+      }
+    } else if (channel === 2) {  // 左转/右转
+      if (value > 1500) {  // 右转
+        vc.rotation.y -= speed * (value - 1500) / 500 * (180/Math.PI);
+      } else if (value < 1500) {  // 左转
+        vc.rotation.y += speed * (1500 - value) / 500 * (180/Math.PI);
+      }
+    }
+  }
+}
 
 // ====================== 遥感控制参数 ======================
 const CONTROL_CONFIG = {
@@ -100,14 +306,14 @@ function initScene() {
 
   // 小车视角渲染器
   vehicleRenderer = new THREE.WebGLRenderer({ antialias: true });
-  vehicleRenderer.setSize(200, 200);
+  vehicleRenderer.setSize(vehicleCameraContainer.value.clientWidth, vehicleCameraContainer.value.clientHeight);
   vehicleRenderer.shadowMap.enabled = true;
   vehicleRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
   vehicleCameraContainer.value.appendChild(vehicleRenderer.domElement);
 
   // 无人机视角渲染器
   aircraftRenderer = new THREE.WebGLRenderer({ antialias: true });
-  aircraftRenderer.setSize(200, 200);
+  aircraftRenderer.setSize(aircraftCameraContainer.value.clientWidth, aircraftCameraContainer.value.clientHeight);
   aircraftRenderer.shadowMap.enabled = true;
   aircraftRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
   aircraftCameraContainer.value.appendChild(aircraftRenderer.domElement);
@@ -374,15 +580,20 @@ function updatePositions() {
   }
 }
 
+// 监听遥测数据变化
+watch(telemetryData, (newVal) => {
+  console.log('遥测数据变化:', newVal.aircraft.position, newVal.vehicle.position);
+}, { deep: true });
+
 function onWindowResize() {
   camera.aspect = container.value.clientWidth / container.value.clientHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(container.value.clientWidth, container.value.clientHeight);
-  if (vehicleRenderer) {
-    vehicleRenderer.setSize(200, 200);
+  if (vehicleRenderer && vehicleCameraContainer.value) {
+    vehicleRenderer.setSize(vehicleCameraContainer.value.clientWidth, vehicleCameraContainer.value.clientHeight);
   }
-  if (aircraftRenderer) {
-    aircraftRenderer.setSize(200, 200);
+  if (aircraftRenderer && aircraftCameraContainer.value) {
+    aircraftRenderer.setSize(aircraftCameraContainer.value.clientWidth, aircraftCameraContainer.value.clientHeight);
   }
 }
 
@@ -415,12 +626,10 @@ defineExpose({
     }
   },
   captureImage: () => {
-    if (aircraftCamera) {
-      const originalCamera = cameraMode.value;
-      cameraMode.value = 'camera';
-      renderer.render(scene, aircraftCamera);
-      const imageUrl = renderer.domElement.toDataURL('image/jpeg');
-      cameraMode.value = originalCamera;
+    if (aircraftCamera && aircraftRenderer) {
+      // 使用无人机视角的渲染器渲染场景
+      aircraftRenderer.render(scene, aircraftCamera);
+      const imageUrl = aircraftRenderer.domElement.toDataURL('image/jpeg');
       return imageUrl;
     }
     return null;
@@ -430,9 +639,11 @@ defineExpose({
 // 生命周期
 onMounted(() => {
   initScene();
+  connectWebSocket();
 });
 
 onUnmounted(() => {
+  disconnectWebSocket();
   window.removeEventListener('resize', onWindowResize);
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
@@ -453,39 +664,84 @@ onUnmounted(() => {
 .three-scene {
   display: flex;
   flex-direction: column;
-  height: 700px;
-  margin: 20px 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
 }
 
 .scene-top {
   display: flex;
   flex-direction: row;
   flex: 1;
-  gap: 10px;
+  gap: 5px;
   min-height: 0;
 }
 
 .camera-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 5px;
   flex-shrink: 0;
+  width: 25%;
+}
+
+.camera-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 3px;
+}
+
+.camera-label {
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+  padding: 3px 6px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+}
+
+.camera-position {
+  font-size: 12px;
+  color: #555;
+  padding: 2px 6px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  font-family: monospace;
 }
 
 .vehicle-camera-container {
-  width: 200px;
-  height: 200px;
+  width: 100%;
+  flex: 1;
   border: 2px solid #4CAF50;
   border-radius: 8px;
   overflow: hidden;
+  min-height: 0;
 }
 
 .aircraft-camera-container {
-  width: 200px;
-  height: 200px;
+  width: 100%;
+  flex: 1;
   border: 2px solid #FF4500;
   border-radius: 8px;
   overflow: hidden;
+  min-height: 0;
+}
+
+.scene-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 3px;
+}
+
+.scene-label {
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+  padding: 3px 6px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
 }
 
 .scene-container {
@@ -493,60 +749,6 @@ onUnmounted(() => {
   border: 1px solid #ddd;
   border-radius: 8px;
   overflow: hidden;
-  min-width: 0;
-}
-
-.scene-controls {
-  margin-top: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.control-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.control-instructions {
-  font-size: 12px;
-  color: #555;
-  background: #f8f9fa;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid #e9ecef;
-}
-
-.control-instructions h4 {
-  margin: 0 0 5px 0;
-  font-size: 13px;
-  color: #333;
-}
-
-.control-instructions p {
-  margin: 3px 0;
-}
-
-button {
-  margin: 0;
-  padding: 8px 16px;
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-button:hover {
-  background-color: #45a049;
-}
-
-.status {
-  font-size: 14px;
-  color: #333;
-  font-family: monospace;
+  min-height: 0;
 }
 </style>

@@ -7,7 +7,7 @@ const MAZE_CONFIG = {
   realWidth: 25,
   realLength: 50,
   cellSize: 25 / 480,
-  wallHeight: 0.8,
+  wallHeight: 0.9,
   wallThickness: 0.3,
   archHeight: 2,
   archWidth: 1.5, // 门洞宽度

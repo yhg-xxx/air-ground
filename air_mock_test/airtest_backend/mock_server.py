@@ -8,16 +8,20 @@ import threading
 import websockets
 import asyncio
 from auto_landing import auto_landing_controller
+from auto_control import AutoControlSystem
+
+# WebSocket客户端列表（用于广播位置更新和控制指令）
+websocket_clients = []
 
 # 全局变量
 TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 AUTH_USERNAME = "fcs002"
 AUTH_PASSWORD = "fcs002fcs002"
 
-# 模拟物体位置和状态
-aircraft_position = [0.5687, 1.3854]
-aircraft_altitude = 10.0  # 无人机高度
-vehicle_position = [0.5687, 1.3854]
+# 模拟物体位置和状态（匹配前端场景初始位置）
+aircraft_position = [8.546, 16.756]
+aircraft_altitude = 1.050  # 无人机高度
+vehicle_position = [8.546, 16.756]
 
 # 模拟云台状态
 gimbal_pitch = 0.0  # 云台俯仰角度（-90到90度）
@@ -32,9 +36,9 @@ def handle_control_command(command):
     channel = command.get('channel')
     value = command.get('value')
 
-    # 移动速度因子
-    speed = 0.001
-    altitude_speed = 0.1  # 高度变化速度
+    # 移动速度因子（大幅增加速度使移动更明显）
+    speed = 0.5
+    altitude_speed = 2.0  # 高度变化速度
 
     if target == 'aircraft':
         if channel == 1:  # 左转/右转
@@ -177,21 +181,35 @@ async def websocket_handler(websocket):
         await websocket.close()
         return
 
+    # 将客户端添加到客户端列表
+    websocket_clients.append(websocket)
+
     await websocket.send(json.dumps({"code": 200, "type": "auth_success", "msg": "Success"}))
     telemetry_task = asyncio.create_task(send_telemetry(websocket))
 
     try:
         while True:
             message = await websocket.recv()
-            print(f"Received control command: {message}")
+            print(f"Received message: {message}")
             try:
-                command = json.loads(message)
-                if command.get('type') == 'control':
-                    handle_control_command(command)
+                data = json.loads(message)
+                if data.get('type') == 'control':
+                    # 将控制指令转发给所有前端客户端
+                    for client in websocket_clients:
+                        if client != websocket:  # 不转发给发送者
+                            try:
+                                await client.send(message)
+                            except:
+                                pass
+                    # 同时也处理控制指令（保持兼容性）
+                    handle_control_command(data)
             except json.JSONDecodeError:
                 print("Invalid JSON command")
     except websockets.exceptions.ConnectionClosed:
         telemetry_task.cancel()
+        # 从客户端列表中移除
+        if websocket in websocket_clients:
+            websocket_clients.remove(websocket)
         print("WebSocket connection closed")
 
 
@@ -298,6 +316,32 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             self._set_cors_headers()
             self.end_headers()
             self.wfile.write(json.dumps(response).encode('utf-8'))
+
+        elif self.path == "/api/auto/start":
+            # 启动自动化算法
+            try:
+                # 在新线程中启动自动化任务，避免阻塞HTTP响应
+                def run_auto_mission():
+                    import asyncio
+                    system = AutoControlSystem()
+                    asyncio.run(system.auto_mission())
+                
+                thread = threading.Thread(target=run_auto_mission, daemon=True)
+                thread.start()
+                
+                response = {"code": "1", "msg": "自动化任务已启动"}
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode('utf-8'))
+            except Exception as e:
+                response = {"code": "0", "msg": f"启动失败：{str(e)}"}
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode('utf-8'))
 
         else:
             self.send_response(404)
