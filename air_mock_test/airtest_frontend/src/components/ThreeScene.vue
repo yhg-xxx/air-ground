@@ -3,14 +3,14 @@
     <div class="scene-top">
       <div class="camera-sidebar">
         <div class="camera-wrapper">
-          <div class="camera-label">无人车摄像头</div>
-          <div class="camera-position">位置: {{ vehiclePosition }}</div>
-          <div ref="vehicleCameraContainer" class="vehicle-camera-container"></div>
-        </div>
-        <div class="camera-wrapper">
           <div class="camera-label">无人机摄像头</div>
           <div class="camera-position">位置: {{ aircraftPosition }}</div>
           <div ref="aircraftCameraContainer" class="aircraft-camera-container"></div>
+        </div>
+        <div class="camera-wrapper">
+          <div class="camera-label">无人车摄像头</div>
+          <div class="camera-position">位置: {{ vehiclePosition }}</div>
+          <div ref="vehicleCameraContainer" class="vehicle-camera-container"></div>
         </div>
       </div>
       <div class="scene-wrapper">
@@ -46,37 +46,152 @@ const keys = ref({});
 
 // 自动化算法状态
 const isAutoMissionRunning = ref(false);
+const autoMissionStatus = ref('');
 let ws = null; // WebSocket连接
 let telemetryInterval = null; // 遥测数据发送定时器
+
+// 自动化路径规划 - 根据用户提供的路线图片生成
+const AUTO_PATHS = {
+  // 无人车迷宫路径（黄色路线）- 从起点穿过迷宫到达终点
+  vehicle: [
+    { x: 8.546, z: 16.756 },   // 起点
+    { x: 7.0, z: 16.756 },     // 向左进入通道
+    { x: 7.0, z: 12.0 },       // 向前到第一个转弯
+    { x: 4.0, z: 12.0 },       // 向左转
+    { x: 4.0, z: 5.0 },        // 向前穿过通道
+    { x: 6.5, z: 5.0 },        // 向右转
+    { x: 6.5, z: -2.0 },       // 向前
+    { x: 3.5, z: -2.0 },       // 向左转
+    { x: 3.5, z: -8.0 },       // 向前
+    { x: 6.0, z: -8.0 },       // 向右转
+    { x: 6.0, z: -15.0 },      // 向前
+    { x: 3.0, z: -15.0 },      // 向左转
+    { x: 3.0, z: -20.0 },      // 向前到底部
+    { x: 10.0, z: -20.0 },     // 向右到达终点区域
+  ],
+  // 无人机拱门路径（红蓝路线）- 起飞后穿过所有拱门
+  aircraft: [
+    { x: 8.546, z: 16.756, y: 0.05 },  // 起点（地面）
+    { x: 8.546, z: 16.756, y: 3.0 },   // 起飞到3m
+    { x: 8.546, z: 16.756, y: 5.0 },   // 上升到5m
+    // 拱门区域路径
+    { x: 7.5, z: 14.0, y: 5.0 },       // 飞向拱门区域入口
+    { x: 6.5, z: 12.0, y: 5.0 },       // 拱门1附近
+    { x: 5.0, z: 10.0, y: 5.0 },       // 中间点
+    { x: 3.0, z: 8.0, y: 5.0 },        // 拱门2附近
+    { x: 1.0, z: 6.0, y: 5.0 },        // 中间点
+    { x: -1.0, z: 4.0, y: 5.0 },       // 拱门3附近
+    { x: -3.0, z: 2.0, y: 5.0 },       // 中间点
+    { x: -5.0, z: 0.0, y: 5.0 },       // 拱门4附近
+    { x: -3.0, z: -2.0, y: 5.0 },      // 中间点
+    { x: -1.0, z: -4.0, y: 5.0 },       // 拱门5附近
+    { x: 1.0, z: -6.0, y: 5.0 },       // 中间点
+    { x: 3.0, z: -8.0, y: 5.0 },       // 拱门6附近
+    { x: 5.0, z: -10.0, y: 5.0 },      // 中间点
+    { x: 7.0, z: -12.0, y: 5.0 },      // 拱门7附近
+    { x: 8.0, z: -14.0, y: 5.0 },      // 中间点
+    { x: 9.0, z: -16.0, y: 5.0 },      // 拱门8附近
+    { x: 10.0, z: -18.0, y: 5.0 },     // 中间点
+    { x: 11.0, z: -20.0, y: 5.0 },     // 拱门9附近（终点）
+    // 返回起点
+    { x: 10.0, z: -15.0, y: 5.0 },     // 返回路径点
+    { x: 9.0, z: -10.0, y: 5.0 },      // 返回路径点
+    { x: 8.546, z: 16.756, y: 5.0 },   // 返回起点上方
+    { x: 8.546, z: 16.756, y: 2.0 },   // 下降到2m
+    { x: 8.546, z: 16.756, y: 0.05 },  // 降落
+  ]
+};
+
+// 自动化控制状态
+let autoMissionInterval = null;
+let currentVehiclePathIndex = 0;
+let currentAircraftPathIndex = 0;
+const cellSize = 25 / 480; // 迷宫单元格大小
 
 // ====================== 自动化算法控制 ======================
 function startAutoMission() {
   if (isAutoMissionRunning.value) return;
-  
-  console.log('准备启动自动化算法');
+
+  console.log('准备启动本地自动化算法');
   isAutoMissionRunning.value = true;
-  
-  // 调用后端API启动自动化算法
-  fetch('http://localhost:30080/api/auto/start', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  })
-  .then(response => response.json())
-  .then(data => {
-    console.log('自动化算法启动响应:', data);
-    if (data.code === '1') {
-      console.log('自动化算法已启动');
+  autoMissionStatus.value = '启动自动化任务...';
+
+  // 重置路径索引
+  currentVehiclePathIndex = 0;
+  currentAircraftPathIndex = 0;
+
+  // 重置位置到起点
+  telemetryData.value.vehicle.position.x = AUTO_PATHS.vehicle[0].x;
+  telemetryData.value.vehicle.position.z = AUTO_PATHS.vehicle[0].z;
+  telemetryData.value.aircraft.position.x = AUTO_PATHS.aircraft[0].x;
+  telemetryData.value.aircraft.position.z = AUTO_PATHS.aircraft[0].z;
+  telemetryData.value.aircraft.position.y = AUTO_PATHS.aircraft[0].y;
+
+  // 启动自动化控制循环
+  autoMissionInterval = setInterval(executeAutoMissionStep, 100);
+}
+
+function stopAutoMission() {
+  if (autoMissionInterval) {
+    clearInterval(autoMissionInterval);
+    autoMissionInterval = null;
+  }
+  isAutoMissionRunning.value = false;
+  autoMissionStatus.value = '自动化任务已停止';
+}
+
+function executeAutoMissionStep() {
+  const vc = telemetryData.value.vehicle;
+  const ac = telemetryData.value.aircraft;
+
+  // 无人车路径控制
+  if (currentVehiclePathIndex < AUTO_PATHS.vehicle.length) {
+    const target = AUTO_PATHS.vehicle[currentVehiclePathIndex];
+    const dx = target.x - vc.position.x;
+    const dz = target.z - vc.position.z;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+
+    if (distance < 0.1) {
+      // 到达当前目标点，移动到下一个
+      currentVehiclePathIndex++;
+      autoMissionStatus.value = `无人车到达路径点 ${currentVehiclePathIndex}/${AUTO_PATHS.vehicle.length}`;
     } else {
-      console.error('启动失败:', data.msg);
-      isAutoMissionRunning.value = false;
+      // 移动向目标点
+      const speed = 0.05;
+      const angle = Math.atan2(dx, dz);
+      vc.rotation.y = angle * 180 / Math.PI;
+      vc.position.x += Math.sin(angle) * speed;
+      vc.position.z += Math.cos(angle) * speed;
     }
-  })
-  .catch(error => {
-    console.error('启动自动化算法失败:', error);
-    isAutoMissionRunning.value = false;
-  });
+  }
+
+  // 无人机路径控制
+  if (currentAircraftPathIndex < AUTO_PATHS.aircraft.length) {
+    const target = AUTO_PATHS.aircraft[currentAircraftPathIndex];
+    const dx = target.x - ac.position.x;
+    const dy = target.y - ac.position.y;
+    const dz = target.z - ac.position.z;
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    if (distance < 0.2) {
+      // 到达当前目标点，移动到下一个
+      currentAircraftPathIndex++;
+      autoMissionStatus.value = `无人机到达路径点 ${currentAircraftPathIndex}/${AUTO_PATHS.aircraft.length}`;
+    } else {
+      // 移动向目标点（包括高度）
+      const speed = 0.08;
+      ac.position.x += (dx / distance) * speed;
+      ac.position.y += (dy / distance) * speed;
+      ac.position.z += (dz / distance) * speed;
+    }
+  }
+
+  // 检查是否完成所有路径
+  if (currentVehiclePathIndex >= AUTO_PATHS.vehicle.length &&
+      currentAircraftPathIndex >= AUTO_PATHS.aircraft.length) {
+    stopAutoMission();
+    autoMissionStatus.value = '自动化任务完成！';
+  }
 }
 
 function connectWebSocket() {
@@ -268,12 +383,12 @@ const CONTROL_CONFIG = {
 const telemetryData = ref({
   aircraft: {
     position: { x: 8.546, y: 1.050, z: 16.756 },
-    rotation: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 90, z: 0 },
     gimbal: { pitch: 0, roll: 0 }
   },
   vehicle: {
     position: { x: 8.546, y: 0.05, z: 16.756 },
-    rotation: { x: 0, y: 0, z: 0 }
+    rotation: { x: 0, y: 90, z: 0 }
   }
 });
 
@@ -599,8 +714,8 @@ function onWindowResize() {
 
 function resetScene() {
   telemetryData.value = {
-    aircraft: { position: { x: 8.546, y: 1.050, z: 16.756 }, rotation: { x: 0, y: 0, z: 0 }, gimbal: { pitch: 0, roll: 0 } },
-    vehicle: { position: { x: 8.546, y: 0.05, z: 16.756 }, rotation: { x: 0, y: 0, z: 0 } }
+    aircraft: { position: { x: 8.546, y: 1.050, z: 16.756 }, rotation: { x: 0, y: 90, z: 0 }, gimbal: { pitch: 0, roll: 0 } },
+    vehicle: { position: { x: 8.546, y: 0.05, z: 16.756 }, rotation: { x: 0, y: 90, z: 0 } }
   };
   if (cameraMode.value === 'orbit') {
     camera.position.set(8.546, 15, 18.756);
@@ -667,6 +782,22 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   margin: 0;
+  position: relative;
+}
+
+.auto-controls-fixed {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .scene-top {
@@ -742,6 +873,55 @@ onUnmounted(() => {
   padding: 3px 6px;
   background-color: rgba(255, 255, 255, 0.9);
   border-radius: 4px;
+}
+
+.start-btn {
+  padding: 8px 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.start-btn:hover {
+  background-color: #45a049;
+}
+
+.start-btn:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.stop-btn {
+  padding: 8px 16px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.stop-btn:hover {
+  background-color: #da190b;
+}
+
+.stop-btn:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.status-text {
+  font-size: 14px;
+  color: #333;
+  padding: 4px 8px;
+  background-color: rgba(240, 240, 240, 0.95);
+  border-radius: 4px;
+  font-weight: 500;
 }
 
 .scene-container {

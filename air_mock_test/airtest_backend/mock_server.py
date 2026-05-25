@@ -9,6 +9,7 @@ import websockets
 import asyncio
 from auto_landing import auto_landing_controller
 from auto_control import AutoControlSystem
+from suanfa import arch_detection_controller, aruco_detection_controller
 
 # WebSocket客户端列表（用于广播位置更新和控制指令）
 websocket_clients = []
@@ -305,6 +306,92 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
 
             # 处理降落图像
             result = auto_landing_controller.process_landing_image(image_data)
+
+            response = {
+                "code": "1",
+                "msg": "success",
+                "data": result
+            }
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self._set_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode('utf-8'))
+
+        elif self.path == "/api/arch/detect":
+            auth_header = self.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                self.send_response(401)
+                self._set_cors_headers()
+                self.end_headers()
+                return
+
+            token = auth_header.split(' ')[1]
+            if token != TOKEN:
+                self.send_response(401)
+                self._set_cors_headers()
+                self.end_headers()
+                return
+
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data)
+
+            image_data = data.get('image')
+            if not image_data:
+                response = {"code": "0", "msg": "缺少图像数据"}
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode('utf-8'))
+                return
+
+            # 处理拱门识别
+            result = arch_detection_controller.process_image(image_data)
+
+            response = {
+                "code": "1",
+                "msg": "success",
+                "data": result
+            }
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self._set_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode('utf-8'))
+
+        elif self.path == "/api/aruco/detect":
+            auth_header = self.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                self.send_response(401)
+                self._set_cors_headers()
+                self.end_headers()
+                return
+
+            token = auth_header.split(' ')[1]
+            if token != TOKEN:
+                self.send_response(401)
+                self._set_cors_headers()
+                self.end_headers()
+                return
+
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data)
+
+            image_data = data.get('image')
+            if not image_data:
+                response = {"code": "0", "msg": "缺少图像数据"}
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode('utf-8'))
+                return
+
+            # 处理ArUco标记识别
+            result = aruco_detection_controller.process_image(image_data)
 
             response = {
                 "code": "1",

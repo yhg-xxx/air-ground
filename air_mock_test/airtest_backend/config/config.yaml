@@ -1,0 +1,193 @@
+# 无人机与无人车协同控制系统配置文件
+
+# ===================== 系统基础配置 =====================
+system:
+  name: "UAV-UGV协同控制系统"
+  version: "1.0.0"
+  log_level: "INFO"
+  log_path: "./logs"
+  data_path: "./data"
+
+# ===================== 通信配置 =====================
+communication:
+  # HTTP配置
+  http:
+    host: "localhost"
+    port: 30080
+    timeout: 30
+  
+  # WebSocket配置
+  websocket:
+    host: "localhost"
+    port: 30081
+    heartbeat_interval: 1.0  # 心跳间隔(秒)
+    reconnect_interval: 1.0  # 重连间隔(秒)
+    max_reconnect_attempts: 10  # 最大重连次数
+  
+  # 认证配置
+  auth:
+    username: "fcs002"
+    password: "fcs002fcs002"
+    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# ===================== 视觉识别配置 =====================
+perception:
+  # 摄像头参数
+  camera:
+    resolution: [1280, 720]
+    fps: 30
+    focal_length: 1000  # 焦距(像素)
+  
+  # 图像处理参数
+  image_processing:
+    blur_kernel: 5  # 高斯模糊核大小
+    canny_threshold1: 50
+    canny_threshold2: 150
+    morph_kernel: 5  # 形态学核大小
+  
+  # 拱门识别参数
+  arch_detection:
+    aspect_ratio_range: [0.3, 2.0]  # 宽高比范围
+    area_range: [5000, 100000]  # 面积范围(像素)
+    circularity_range: [0.3, 0.9]  # 圆度范围
+    confidence_threshold: 0.5  # 置信度阈值
+  
+  # ArUco标记参数
+  aruco:
+    dictionary: "DICT_6X6_250"
+    marker_length: 0.2  # 标记实际边长(米)
+    target_height: 0.3  # 目标降落高度(米)
+    landing_threshold: 0.1  # 降落判定阈值(米)
+    horizontal_threshold: 0.15  # 水平对齐阈值(米)
+  
+  # 地图构建参数
+  mapping:
+    grid_size: 0.05  # 栅格大小(米)
+    map_width: 480  # 地图宽度(栅格数)
+    map_height: 1200  # 地图高度(栅格数)
+    cell_size: 0.052  # 单元格大小(米)
+
+# ===================== 路径规划配置 =====================
+planning:
+  # 全局规划参数
+  global_planner:
+    algorithm: "astar"  # 规划算法
+    step_size: 1  # 步长(栅格)
+    heuristic_weight: 1.0  # 启发函数权重
+    diagonal_movement: true  # 允许对角移动
+  
+  # 局部规划参数
+  local_planner:
+    algorithm: "dwa"  # 动态窗口法
+    safe_distance: 0.3  # 安全距离(米)
+    max_speed: 2.0  # 最大速度(m/s)
+    max_angular_speed: 1.0  # 最大角速度(rad/s)
+    velocity_samples: 20  # 速度采样数
+    angular_samples: 20  # 角速度采样数
+    prediction_time: 2.0  # 预测时间(秒)
+  
+  # 航点生成参数
+  waypoint:
+    spacing: 0.5  # 航点间距(米)
+    smoothing_factor: 0.5  # 平滑系数
+
+# ===================== 运动控制配置 =====================
+control:
+  # PID控制器参数
+  pid:
+    # 无人机位置控制
+    aircraft_position:
+      kp: 1.0
+      ki: 0.1
+      kd: 0.5
+    # 无人机姿态控制
+    aircraft_attitude:
+      kp: 2.0
+      ki: 0.2
+      kd: 1.0
+    # 无人车速度控制
+    vehicle_velocity:
+      kp: 1.5
+      ki: 0.1
+      kd: 0.3
+    # 无人车转向控制
+    vehicle_steering:
+      kp: 2.0
+      ki: 0.0
+      kd: 0.5
+  
+  # 运动控制参数
+  motion:
+    # 无人机参数
+    aircraft:
+      max_speed: 5.0  # 最大速度(m/s)
+      max_altitude: 15.0  # 最大高度(米)
+      min_altitude: 0.5  # 最小高度(米)
+      takeoff_height: 10.0  # 起飞高度(米)
+    
+    # 无人车参数
+    vehicle:
+      max_speed: 3.0  # 最大速度(m/s)
+      max_angular_speed: 1.5  # 最大角速度(rad/s)
+      acceleration: 1.0  # 加速度(m/s²)
+      deceleration: 2.0  # 减速度(m/s²)
+  
+  # 云台控制参数
+  gimbal:
+    pitch_range: [-90, 90]  # 俯仰角范围(度)
+    roll_range: [-45, 45]  # 横滚角范围(度)
+    pitch_speed: 30  # 俯仰速度(度/秒)
+    roll_speed: 30  # 横滚速度(度/秒)
+
+# ===================== 安全监控配置 =====================
+safety:
+  # 电量监控
+  power:
+    warning_threshold: 30  # 警告阈值(%)
+    critical_threshold: 15  # 紧急阈值(%)
+    return_threshold: 20  # 返航阈值(%)
+  
+  # 越界检测
+  boundary:
+    enabled: true
+    min_x: -12.5
+    max_x: 12.5
+    min_z: 0.0
+    max_z: 62.5
+  
+  # 碰撞检测
+  collision:
+    safe_distance: 0.5  # 安全距离(米)
+    emergency_distance: 0.2  # 紧急距离(米)
+  
+  # 任务超时
+  timeout:
+    mission_timeout: 600  # 任务超时(秒)
+    stage_timeout: 120  # 阶段超时(秒)
+
+# ===================== 协同任务配置 =====================
+mission:
+  # 迷宫配置
+  maze:
+    start_position: [8.546, 16.756]
+    end_position: [-11.45, 61.25]
+    arches:
+      - {x: 360, z: 130, dir: "vertical"}
+      - {x: 370, z: 930, dir: "vertical"}
+      - {x: 120, z: 980, dir: "vertical"}
+      - {x: 280, z: 960, dir: "horizontal"}
+      - {x: 20, z: 1020, dir: "vertical"}
+      - {x: 200, z: 1020, dir: "vertical"}
+      - {x: 380, z: 1050, dir: "horizontal"}
+      - {x: 80, z: 1080, dir: "vertical"}
+      - {x: 280, z: 1080, dir: "vertical"}
+  
+  # 任务阶段
+  stages:
+    - "initialization"
+    - "reconnaissance"
+    - "arch_crossing"
+    - "path_planning"
+    - "coordinated_navigation"
+    - "precision_landing"
+    - "final_sprint"
