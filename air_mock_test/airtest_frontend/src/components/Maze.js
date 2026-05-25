@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 
-// ====================== 真实尺寸配置（50m×25m 1:1）======================
 const MAZE_CONFIG = {
   gridCols: 480,
   gridRows: 1200,
@@ -10,42 +9,195 @@ const MAZE_CONFIG = {
   wallHeight: 0.9,
   wallThickness: 0.3,
   archHeight: 2,
-  archWidth: 1.5, // 门洞宽度
-  archThickness: 0.2, // 拱门厚度（固定）
+  archWidth: 1.5,
+  archThickness: 0.2,
   offsetX: -12.5,
-  offsetZ: -25
+  offsetZ: -25,
+  waterHorseWidth: 0.3,
+  waterHorseLength: 1.45
 };
 
-// 碰撞体数组
 let collisionBoxes = [];
 
-// ====================== 迷宫生成函数 ======================
+function createWaterHorseGeometry() {
+  const group = new THREE.Group();
+  
+  const mainGeo = new THREE.BoxGeometry(MAZE_CONFIG.waterHorseLength, 0.8, MAZE_CONFIG.waterHorseWidth);
+  
+  const cutGeo1 = new THREE.CylinderGeometry(0.12, 0.12, 0.5, 16, 1, true, 0, Math.PI * 2);
+  cutGeo1.rotateZ(Math.PI / 2);
+  const cutMesh1 = new THREE.Mesh(cutGeo1);
+  cutMesh1.position.set(-0.35, 0.3, 0);
+  
+  const cutGeo2 = new THREE.CylinderGeometry(0.12, 0.12, 0.5, 16, 1, true, 0, Math.PI * 2);
+  cutGeo2.rotateZ(Math.PI / 2);
+  const cutMesh2 = new THREE.Mesh(cutGeo2);
+  cutMesh2.position.set(0, 0.3, 0);
+  
+  const cutGeo3 = new THREE.CylinderGeometry(0.12, 0.12, 0.5, 16, 1, true, 0, Math.PI * 2);
+  cutGeo3.rotateZ(Math.PI / 2);
+  const cutMesh3 = new THREE.Mesh(cutGeo3);
+  cutMesh3.position.set(0.35, 0.3, 0);
+  
+  const topGeo = new THREE.BoxGeometry(MAZE_CONFIG.waterHorseLength + 0.1, 0.08, MAZE_CONFIG.waterHorseWidth + 0.02);
+  const topMesh = new THREE.Mesh(topGeo);
+  topMesh.position.set(0, 0.44, 0);
+  
+  const bottomGeo = new THREE.BoxGeometry(MAZE_CONFIG.waterHorseLength + 0.15, 0.1, MAZE_CONFIG.waterHorseWidth + 0.08);
+  const bottomMesh = new THREE.Mesh(bottomGeo);
+  bottomMesh.position.set(0, -0.4, 0);
+  
+  return { mainGeo, topGeo, bottomGeo };
+}
+
+function createWaterHorse(group, x, y, z, isHorizontal) {
+  const waterHorseMaterial = new THREE.MeshStandardMaterial({
+    color: 0xcc2222,
+    roughness: 0.78,
+    metalness: 0.02,
+    envMapIntensity: 0.28
+  });
+  
+  const yellowStripeMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffdd00,
+    roughness: 0.72,
+    metalness: 0.02,
+    envMapIntensity: 0.25
+  });
+  
+  const whitePanelMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.68,
+    metalness: 0.01,
+    envMapIntensity: 0.22
+  });
+
+  const waterHorseGroup = new THREE.Group();
+  
+  const baseGeo = new THREE.BoxGeometry(MAZE_CONFIG.waterHorseLength, 0.8, MAZE_CONFIG.waterHorseWidth);
+  const baseMesh = new THREE.Mesh(baseGeo, waterHorseMaterial);
+  baseMesh.position.set(0, 0.4, 0);
+  baseMesh.castShadow = true;
+  baseMesh.receiveShadow = true;
+  waterHorseGroup.add(baseMesh);
+  
+  const topGeo = new THREE.BoxGeometry(MAZE_CONFIG.waterHorseLength + 0.1, 0.08, MAZE_CONFIG.waterHorseWidth + 0.02);
+  const topMesh = new THREE.Mesh(topGeo, waterHorseMaterial);
+  topMesh.position.set(0, 0.84, 0);
+  topMesh.castShadow = true;
+  waterHorseGroup.add(topMesh);
+  
+  const bottomGeo = new THREE.BoxGeometry(MAZE_CONFIG.waterHorseLength + 0.15, 0.12, MAZE_CONFIG.waterHorseWidth + 0.08);
+  const bottomMesh = new THREE.Mesh(bottomGeo, waterHorseMaterial);
+  bottomMesh.position.set(0, 0.06, 0);
+  bottomMesh.castShadow = true;
+  bottomMesh.receiveShadow = true;
+  waterHorseGroup.add(bottomMesh);
+  
+  const holeGeo1 = new THREE.CylinderGeometry(0.12, 0.12, MAZE_CONFIG.waterHorseWidth + 0.1, 24);
+  holeGeo1.rotateZ(Math.PI / 2);
+  const holeMesh1 = new THREE.Mesh(holeGeo1, new THREE.MeshStandardMaterial({ 
+    color: 0x333333, 
+    roughness: 0.85,
+    metalness: 0.01,
+    side: THREE.DoubleSide
+  }));
+  holeMesh1.position.set(-0.35, 0.45, 0);
+  waterHorseGroup.add(holeMesh1);
+  
+  const holeGeo2 = new THREE.CylinderGeometry(0.12, 0.12, MAZE_CONFIG.waterHorseWidth + 0.1, 24);
+  holeGeo2.rotateZ(Math.PI / 2);
+  const holeMesh2 = new THREE.Mesh(holeGeo2, new THREE.MeshStandardMaterial({ 
+    color: 0x333333, 
+    roughness: 0.85,
+    metalness: 0.01,
+    side: THREE.DoubleSide
+  }));
+  holeMesh2.position.set(0, 0.45, 0);
+  waterHorseGroup.add(holeMesh2);
+  
+  const holeGeo3 = new THREE.CylinderGeometry(0.12, 0.12, MAZE_CONFIG.waterHorseWidth + 0.1, 24);
+  holeGeo3.rotateZ(Math.PI / 2);
+  const holeMesh3 = new THREE.Mesh(holeGeo3, new THREE.MeshStandardMaterial({ 
+    color: 0x333333, 
+    roughness: 0.85,
+    metalness: 0.01,
+    side: THREE.DoubleSide
+  }));
+  holeMesh3.position.set(0.35, 0.45, 0);
+  waterHorseGroup.add(holeMesh3);
+  
+  for (let i = -2; i <= 2; i++) {
+    const arrowGeo = new THREE.BoxGeometry(0.12, 0.03, 0.02);
+    const arrowMesh = new THREE.Mesh(arrowGeo, yellowStripeMaterial);
+    arrowMesh.position.set(i * 0.22, 0.2, MAZE_CONFIG.waterHorseWidth/2 + 0.015);
+    arrowMesh.castShadow = true;
+    waterHorseGroup.add(arrowMesh);
+    
+    const arrowMesh2 = new THREE.Mesh(arrowGeo, yellowStripeMaterial);
+    arrowMesh2.position.set(i * 0.22, 0.2, -MAZE_CONFIG.waterHorseWidth/2 - 0.015);
+    arrowMesh2.castShadow = true;
+    waterHorseGroup.add(arrowMesh2);
+  }
+  
+  const panelGeo = new THREE.BoxGeometry(0.6, 0.22, 0.02);
+  const panelMesh = new THREE.Mesh(panelGeo, whitePanelMaterial);
+  panelMesh.position.set(0, 0.6, MAZE_CONFIG.waterHorseWidth/2 + 0.012);
+  panelMesh.castShadow = true;
+  waterHorseGroup.add(panelMesh);
+  
+  const panelMesh2 = new THREE.Mesh(panelGeo, whitePanelMaterial);
+  panelMesh2.position.set(0, 0.6, -MAZE_CONFIG.waterHorseWidth/2 - 0.012);
+  panelMesh2.castShadow = true;
+  waterHorseGroup.add(panelMesh2);
+  
+  if (isHorizontal) {
+    waterHorseGroup.position.set(x, y, z);
+  } else {
+    waterHorseGroup.rotation.y = Math.PI / 2;
+    waterHorseGroup.position.set(x, y, z);
+  }
+  
+  group.add(waterHorseGroup);
+  
+  const width = isHorizontal ? MAZE_CONFIG.waterHorseLength : MAZE_CONFIG.waterHorseWidth;
+  const depth = isHorizontal ? MAZE_CONFIG.waterHorseWidth : MAZE_CONFIG.waterHorseLength;
+  collisionBoxes.push({
+    minX: x - width/2,
+    maxX: x + width/2,
+    minY: 0,
+    maxY: MAZE_CONFIG.wallHeight,
+    minZ: z - depth/2,
+    maxZ: z + depth/2
+  });
+}
+
 function createLeftMaze(scene) {
   const mazeGroup = new THREE.Group();
   scene.add(mazeGroup);
 
-  const wallMaterial = new THREE.MeshLambertMaterial({ color: 0xff3333 });
-  const stripeMaterial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
-  const archMaterial = new THREE.MeshLambertMaterial({ color: 0x0066ff, transparent: true, opacity: 0.8 });
+  const archMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x33aaff, 
+    roughness: 0.4, 
+    metalness: 0.12 
+  });
 
-  // 清空之前的碰撞体
   collisionBoxes = [];
 
-  createMazeBoundary(mazeGroup, wallMaterial, stripeMaterial);
-  createInnerWalls(mazeGroup, wallMaterial, stripeMaterial);
+  createMazeBoundary(mazeGroup);
+  createInnerWalls(mazeGroup);
   createArches(mazeGroup, archMaterial);
 }
 
-function createMazeBoundary(group, wallMat, stripeMat) {
+function createMazeBoundary(group) {
   const { cellSize, wallHeight, offsetX, offsetZ } = MAZE_CONFIG;
 
-  // 边缘墙壁坐标，使用 { x1, x2, z1, z2 } 格式
   const boundaryWalls = [
-    { x1: 0, x2: 420, z1: 80, z2: 100 },           // 上边墙
-    { x1: 0, x2: 0, z1: 0, z2: 1110 },         // 左边墙
-    { x1: 360, x2: 370, z1: 150, z2: 910 },     // 右边墙
+    { x1: 0, x2: 420, z1: 80, z2: 100 },
+    { x1: 0, x2: 0, z1: 0, z2: 1110 },
+    { x1: 360, x2: 370, z1: 150, z2: 910 },
     { x1: 410, x2: 420, z1: 950, z2: 1110 },
-    { x1: 0, x2: 420, z1: 1100, z2: 1110 }     // 下边墙
+    { x1: 0, x2: 420, z1: 1100, z2: 1110 }
   ];
 
   boundaryWalls.forEach(wall => {
@@ -57,11 +209,24 @@ function createMazeBoundary(group, wallMat, stripeMat) {
     const depth = Math.abs(realZ2 - realZ1);
     const centerX = (realX1 + realX2) / 2;
     const centerZ = (realZ1 + realZ2) / 2;
-    createWall(group, wallMat, stripeMat, centerX, wallHeight/2, centerZ, width, wallHeight, depth);
+    
+    const isHorizontal = width > depth;
+    const length = isHorizontal ? width : depth;
+    const numWaterHorses = Math.floor(length / MAZE_CONFIG.waterHorseLength);
+    const spacing = MAZE_CONFIG.waterHorseLength;
+    
+    for (let i = 0; i < numWaterHorses; i++) {
+      const pos = -length/2 + spacing/2 + i * spacing;
+      if (isHorizontal) {
+        createWaterHorse(group, centerX - width/2 + spacing/2 + i * spacing, 0, centerZ, true);
+      } else {
+        createWaterHorse(group, centerX, 0, centerZ - depth/2 + spacing/2 + i * spacing, false);
+      }
+    }
   });
 }
 
-function createInnerWalls(group, wallMat, stripeMat) {
+function createInnerWalls(group) {
   const { cellSize, wallHeight, wallThickness } = MAZE_CONFIG;
   const walls = [
     { x1: 200, x2: 210, z1: 130, z2: 220 },
@@ -85,7 +250,7 @@ function createInnerWalls(group, wallMat, stripeMat) {
     { x1: 120, x2: 220, z1: 900, z2: 910 },
     { x1: 280, x2: 360, z1: 900, z2: 910 },
     { x1: 0, x2: 260, z1: 950, z2: 960 },
-       { x1: 300, x2: 420, z1: 950, z2: 960 },
+    { x1: 300, x2: 420, z1: 950, z2: 960 },
   ];
 
   walls.forEach(wall => {
@@ -97,17 +262,25 @@ function createInnerWalls(group, wallMat, stripeMat) {
     const depth = Math.abs(realZ2 - realZ1);
     const centerX = (realX1 + realX2) / 2;
     const centerZ = (realZ1 + realZ2) / 2;
-    createWall(group, wallMat, stripeMat, centerX, wallHeight/2, centerZ, width, wallHeight, depth);
+    
+    const isHorizontal = width > depth;
+    const length = isHorizontal ? width : depth;
+    const numWaterHorses = Math.floor(length / MAZE_CONFIG.waterHorseLength);
+    
+    for (let i = 0; i < numWaterHorses; i++) {
+      const pos = -length/2 + MAZE_CONFIG.waterHorseLength/2 + i * MAZE_CONFIG.waterHorseLength;
+      if (isHorizontal) {
+        createWaterHorse(group, centerX - width/2 + MAZE_CONFIG.waterHorseLength/2 + i * MAZE_CONFIG.waterHorseLength, 0, centerZ, true);
+      } else {
+        createWaterHorse(group, centerX, 0, centerZ - depth/2 + MAZE_CONFIG.waterHorseLength/2 + i * MAZE_CONFIG.waterHorseLength, false);
+      }
+    }
   });
 }
 
-// ====================== ✅ 最终修复版：横竖拱门（彻底解决山字问题）======================
 function createArches(group, archMat) {
   const { cellSize, archHeight, archWidth, archThickness } = MAZE_CONFIG;
 
-  // 🎯 现在定义绝对清晰，再也不会搞反了！
-  // dir: 'vertical' = 竖拱门（正常门，柱子前后站，车辆左右开过去）
-  // dir: 'horizontal' = 横拱门（侧门，柱子左右站，车辆前后开过去）
   const arches = [
     { x: 360, z: 130, dir: 'vertical' },
     { x: 370, z: 930, dir: 'vertical' },
@@ -125,12 +298,9 @@ function createArches(group, archMat) {
     const realZ = (arch.z - 600) * cellSize;
 
     if (arch.dir === 'vertical') {
-      // --- 竖拱门（正常门，车辆左右走）---
-      // 柱子：前后排列
       createArchPillar(group, archMat, realX, realZ - archWidth/2);
       createArchPillar(group, archMat, realX, realZ + archWidth/2);
 
-      // 横梁：水平左右架在柱子上
       const beam = new THREE.Mesh(
         new THREE.BoxGeometry(archThickness, 0.15, archWidth),
         archMat
@@ -139,12 +309,9 @@ function createArches(group, archMat) {
       beam.castShadow = true;
       group.add(beam);
     } else {
-      // --- 横拱门（侧门，车辆前后走）---
-      // 柱子：左右排列
       createArchPillar(group, archMat, realX - archWidth/2, realZ);
       createArchPillar(group, archMat, realX + archWidth/2, realZ);
 
-      // 横梁：水平前后架在柱子上
       const beam = new THREE.Mesh(
         new THREE.BoxGeometry(archWidth, 0.15, archThickness),
         archMat
@@ -156,41 +323,12 @@ function createArches(group, archMat) {
   });
 }
 
-function createWall(group, mainMat, stripeMat, x, y, z, width, height, depth) {
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), mainMat);
-  wall.position.set(x, y, z);
-  wall.castShadow = true;
-  wall.receiveShadow = true;
-  group.add(wall);
-
-  // 添加碰撞体
-  collisionBoxes.push({
-    minX: x - width/2,
-    maxX: x + width/2,
-    minY: 0,
-    maxY: height,
-    minZ: z - depth/2,
-    maxZ: z + depth/2
-  });
-
-  const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(width, 0.1, depth + 0.01), stripeMat);
-  stripe1.position.set(x, y + height*0.3, z);
-  stripe1.castShadow = true;
-  group.add(stripe1);
-
-  const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(width, 0.1, depth + 0.01), stripeMat);
-  stripe2.position.set(x, y + height*0.7, z);
-  stripe2.castShadow = true;
-  group.add(stripe2);
-}
-
 function createArchPillar(group, mat, x, z) {
   const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.15, MAZE_CONFIG.archHeight, 0.15), mat);
   pillar.position.set(x, MAZE_CONFIG.archHeight/2, z);
   pillar.castShadow = true;
   group.add(pillar);
 
-  // 添加柱子碰撞体
   collisionBoxes.push({
     minX: x - 0.075,
     maxX: x + 0.075,
@@ -201,24 +339,18 @@ function createArchPillar(group, mat, x, z) {
   });
 }
 
-// 暴露创建迷宫的函数和碰撞检测
 export { createLeftMaze, collisionBoxes };
 
-// 获取碰撞体数量（用于调试）
 function getCollisionBoxCount() {
   return collisionBoxes.length;
 }
 
 export { getCollisionBoxCount };
 
-// 碰撞检测函数（检测整个边界框）
 function checkCollision(x, y, z, radius = 0.2, height = 0.1) {
   for (const box of collisionBoxes) {
-    // 检查 X 轴
     if (x + radius > box.minX && x - radius < box.maxX &&
-        // 检查 Y 轴（高度范围）
         y + height > box.minY && y < box.maxY &&
-        // 检查 Z 轴
         z + radius > box.minZ && z - radius < box.maxZ) {
       return true;
     }

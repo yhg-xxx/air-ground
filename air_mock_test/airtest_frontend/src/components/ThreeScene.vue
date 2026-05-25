@@ -441,31 +441,72 @@ function initScene() {
   controls.minDistance = 1;
   controls.maxDistance = 50;
 
-  // 光源
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  // 光源 - 晴天户外明亮自然光效果
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
   scene.add(ambientLight);
 
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(10, 20, 10);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.3);
+  directionalLight.position.set(20, 30, 20);
   directionalLight.castShadow = true;
   directionalLight.shadow.mapSize.set(2048, 2048);
+  directionalLight.shadow.camera.near = 0.5;
+  directionalLight.shadow.camera.far = 120;
+  directionalLight.shadow.camera.left = -50;
+  directionalLight.shadow.camera.right = 50;
+  directionalLight.shadow.camera.top = 60;
+  directionalLight.shadow.camera.bottom = -60;
+  directionalLight.shadow.bias = -0.0001;
+  directionalLight.shadow.radius = 2;
   scene.add(directionalLight);
 
-  // 地面
-  const groundGeometry = new THREE.PlaneGeometry(60, 80);
-  const groundMaterial = new THREE.MeshLambertMaterial({
-    color: 0x7CFC00,
-    side: THREE.DoubleSide
-  });
-  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.01;
-  ground.receiveShadow = true;
-  scene.add(ground);
+  const fillLight = new THREE.DirectionalLight(0xa8d8ea, 0.4);
+  fillLight.position.set(-15, 20, -15);
+  scene.add(fillLight);
 
-  // 网格辅助
-  const gridHelper = new THREE.GridHelper(60, 60, 0x000000, 0xcccccc);
-  scene.add(gridHelper);
+  const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x88cc88, 0.3);
+  scene.add(hemisphereLight);
+
+  // 地面 - 操场高密度仿真人造草坪（带横向条纹）
+  const textureLoader = new THREE.TextureLoader();
+  
+  const stripeWidth = 4;
+  const numStripes = Math.ceil(80 / stripeWidth);
+  
+  for (let i = 0; i < numStripes; i++) {
+    const groundGeometry = new THREE.PlaneGeometry(60, stripeWidth);
+    const grassTexture = textureLoader.load('/Grass005_1K-JPG/Grass005_1K-JPG_Color.jpg');
+    grassTexture.wrapS = THREE.RepeatWrapping;
+    grassTexture.wrapT = THREE.RepeatWrapping;
+    grassTexture.repeat.set(12, 2);
+    
+    const grassNormalMap = textureLoader.load('/Grass005_1K-JPG/Grass005_1K-JPG_NormalGL.jpg');
+    grassNormalMap.wrapS = THREE.RepeatWrapping;
+    grassNormalMap.wrapT = THREE.RepeatWrapping;
+    grassNormalMap.repeat.set(12, 2);
+    
+    const isDarkStripe = i % 2 === 0;
+    const stripeColor = isDarkStripe ? 0x4a8c2a : 0x8dd25a;
+    
+    const groundMaterial = new THREE.MeshStandardMaterial({
+      map: grassTexture,
+      normalMap: grassNormalMap,
+      normalScale: new THREE.Vector2(0.12, 0.12),
+      roughness: 0.7,
+      metalness: 0.02,
+      side: THREE.DoubleSide,
+      color: stripeColor,
+      envMapIntensity: 0.25
+    });
+    
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.01;
+    ground.position.z = -40 + i * stripeWidth + stripeWidth / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+  }
+
+  // 移除网格辅助线以保持草坪真实感
 
   // 创建迷宫
   createLeftMaze(scene);
