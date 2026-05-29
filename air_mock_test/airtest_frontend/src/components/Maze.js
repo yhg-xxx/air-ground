@@ -229,8 +229,11 @@ function createMazeBoundary(group) {
 function createInnerWalls(group) {
   const { cellSize, wallHeight, wallThickness } = MAZE_CONFIG;
   const walls = [
+
+      //x为左右长，z为上下长
+
     { x1: 200, x2: 210, z1: 130, z2: 220 },
-    { x1: 120, x2: 130, z1: 170, z2: 210 },
+    { x1: 120, x2: 130, z1: 150, z2: 210 },
     { x1: 120, x2: 200, z1: 210, z2: 220 },
     { x1: 120, x2: 130, z1: 210, z2: 290 },
     { x1: 120, x2: 280, z1: 290, z2: 300 },
